@@ -1,0 +1,2 @@
+# Do not count .f files as Fortran
+*.f linguist-vendored

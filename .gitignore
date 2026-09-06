@@ -1,0 +1,13 @@
+# Supplied company RTL
+/rtl/
+
+# Project-generated output
+/build/
+/xcelium.d/
+/xrun.log
+/xrun.history
+/xrun.key
+/*.shm/
+/cov_work/
+*.ucd
+*.ucm
