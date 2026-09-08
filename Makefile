@@ -4,7 +4,7 @@ SHELL := /bin/bash
 .PHONY: help check clean
 
 XRUN       ?= xrun
-XRUN_FLAGS ?= -64bit -sv -uvm
+XRUN_FLAGS ?= -64bit -sv -uvm -timescale 1ns/1ps
 TOP        ?= tb_top
 SNAPSHOT   ?= bmu_tb_snapshot
 
