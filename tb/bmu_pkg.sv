@@ -4,4 +4,5 @@ package bmu_pkg;
   `include "uvm_macros.svh"
 
   `include "agent/bmu_sequence_item.sv"
+  `include "agent/bmu_sequencer.sv"
 endpackage
