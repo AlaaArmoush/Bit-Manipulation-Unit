@@ -8,4 +8,6 @@ package bmu_pkg;
   `include "agent/bmu_driver.sv"
   `include "agent/bmu_monitor.sv"
   `include "agent/bmu_agent.sv"
+  `include "env/bmu_reference_model.sv"
+  `include "env/bmu_scoreboard.sv"
 endpackage
