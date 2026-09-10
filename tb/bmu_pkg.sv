@@ -7,4 +7,5 @@ package bmu_pkg;
   `include "agent/bmu_sequencer.sv"
   `include "agent/bmu_driver.sv"
   `include "agent/bmu_monitor.sv"
+  `include "agent/bmu_agent.sv"
 endpackage
