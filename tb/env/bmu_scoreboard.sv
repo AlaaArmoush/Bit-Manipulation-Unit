@@ -6,7 +6,7 @@ class bmu_scoreboard extends uvm_scoreboard;
     bit error_matched;
   } pending_entry_t;
 
-  uvm_analysis_imp #(bmu_sequence_item, bmu_scoreboard) analyis_imp;
+  uvm_analysis_imp #(bmu_sequence_item, bmu_scoreboard) analysis_imp;
   bmu_reference_model reference_model;
   protected pending_entry_t pending_predictions[$];
   int unsigned match_count;
@@ -14,7 +14,7 @@ class bmu_scoreboard extends uvm_scoreboard;
 
   function new(string name = "bmu_scoreboard", uvm_component parent = null);
     super.new(name, parent);
-    analyis_imp = new("analyis_imp", this);
+    analysis_imp = new("analysis_imp", this);
     match_count = 0;
     mismatch_count = 0;
   endfunction : new
