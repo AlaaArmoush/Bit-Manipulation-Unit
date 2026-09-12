@@ -10,4 +10,5 @@ package bmu_pkg;
   `include "agent/bmu_agent.sv"
   `include "env/bmu_reference_model.sv"
   `include "env/bmu_scoreboard.sv"
+  `include "env/bmu_coverage_subscriber.sv"
 endpackage
