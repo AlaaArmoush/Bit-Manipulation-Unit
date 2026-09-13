@@ -16,5 +16,4 @@ package bmu_pkg;
   `include "env/bmu_environment.sv"
   `include "tests/bmu_base_test.sv"
   `include "tests/bmu_sanity_test.sv"
-
 endpackage
