@@ -23,11 +23,10 @@ class bmu_sanity_sequence extends bmu_base_sequence;
     `uvm_info("SANITY_STIMULUS", $sformatf("Sending legal CSR read with expected result 0x%08h",
                                            request.csr_rddata_in), UVM_LOW)
 
-    send_request(request);
+    send_bmu_request(request);
   endtask : body
 
 endclass
-
 
 
 
