@@ -1,5 +1,9 @@
 `timescale 1ns / 1ps
+
 module tb_top;
+  import uvm_pkg::*;
+  import bmu_pkg::*;
+
   localparam time CLK_PERIOD = 10ns;
 
   logic clk;
@@ -27,6 +31,7 @@ module tb_top;
 
   initial begin
     bmu_if.rst_l = 1'b0;
+
     repeat (2) @(posedge clk);
 
     @(negedge clk);
@@ -34,4 +39,11 @@ module tb_top;
   end
 
   assign bmu_if.scan_mode = 1'b0;
+
+  initial begin
+    uvm_config_db#(virtual bmu_interface)::set(null, "uvm_test_top.env.agent", "vif", bmu_if);
+
+    run_test();
+  end
+
 endmodule
