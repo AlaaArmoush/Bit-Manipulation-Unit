@@ -11,4 +11,7 @@ package bmu_pkg;
   `include "env/bmu_reference_model.sv"
   `include "env/bmu_scoreboard.sv"
   `include "env/bmu_coverage_subscriber.sv"
+  `include "env/bmu_environment.sv"
+  `include "tests/bmu_base_test.sv"
+  `include "tests/bmu_sanity_test.sv"
 endpackage
