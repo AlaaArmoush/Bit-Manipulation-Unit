@@ -22,6 +22,7 @@ class bmu_sanity_test extends bmu_base_test;
 
     sanity_seq.start(env.agent.sequencer);
 
+    //if wait remains blocked/global timeout -> monitor is not connected
     wait ((env.scoreboard.match_count + env.scoreboard.mismatch_count) > 0);
 
     `uvm_info("SANITY_COMPLETE", "The scoreboard completed the sanity transaction check", UVM_LOW)
