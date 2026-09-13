@@ -7,11 +7,15 @@ class bmu_sanity_sequence extends bmu_base_sequence;
 
   virtual task body();
     bmu_sequence_item request;
+
     request = bmu_sequence_item::type_id::create("csr_read_request");
 
-    if (request == null) `uvm_fatal("NO_REQUEST", "Failed to create the sanity sequence item")
+    if (request == null) begin
+      `uvm_fatal("NO_REQUEST", "Failed to create the sanity sequence item")
+      return;
+    end
 
-    apply_legal_defaults(reques);
+    apply_legal_defaults(request);
 
     request.csr_ren_in    = 1'b1;
     request.csr_rddata_in = 32'hA5C3_5A3C;
@@ -21,4 +25,9 @@ class bmu_sanity_sequence extends bmu_base_sequence;
 
     send_request(request);
   endtask : body
+
 endclass
+
+
+
+
