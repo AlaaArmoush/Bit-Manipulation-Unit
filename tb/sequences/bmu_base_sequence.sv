@@ -1,4 +1,5 @@
 class bmu_base_sequence extends uvm_sequence #(bmu_sequence_item);
+
   `uvm_object_utils(bmu_base_sequence)
 
   function new(string name = "bmu_base_sequence");
@@ -19,7 +20,7 @@ class bmu_base_sequence extends uvm_sequence #(bmu_sequence_item);
     request.b_in          = '0;
   endfunction : apply_legal_defaults
 
-  protected task send_request(bmu_sequence_item request);
+  protected task send_bmu_request(bmu_sequence_item request);
     if (request == null) begin
       `uvm_fatal("NULL_REQUEST", "Cannot send a null sequence item")
       return;
@@ -27,5 +28,7 @@ class bmu_base_sequence extends uvm_sequence #(bmu_sequence_item);
 
     start_item(request);
     finish_item(request);
-  endtask : send_request
+  endtask : send_bmu_request
+
 endclass
+
