@@ -14,12 +14,35 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     }
   endgroup : sanity_flow_cg
 
+  covergroup csr_read_cg;
+    option.per_instance = 1;
+
+    csr_data_class_cp: coverpoint sampled_transaction.csr_rddata_in
+        iff ((sampled_transaction.rst_l       === 1'b1) &&
+             (sampled_transaction.valid_in   === 1'b1) &&
+             (sampled_transaction.csr_ren_in === 1'b1) &&
+             (sampled_transaction.ap         === '0)) {
+      bins all_zero = {32'h0000_0000};
+      bins all_one = {32'hFFFF_FFFF};
+      bins random_non_boundary = {[32'h0000_0001 : 32'hFFFF_FFFE]};
+    }
+
+    csr_read_legality_cp: coverpoint
+        (sampled_transaction.ap === '0)
+        iff ((sampled_transaction.rst_l       === 1'b1) &&
+             (sampled_transaction.valid_in   === 1'b1) &&
+             (sampled_transaction.csr_ren_in === 1'b1)) {
+      bins legal = {1'b1}; bins invalid = {1'b0};
+    }
+  endgroup
+
   function new(string name = "bmu_coverage_subscriber", uvm_component parent = null);
     super.new(name, parent);
 
     sampled_transaction = null;
     sample_count        = 0;
     sanity_flow_cg      = new();
+    csr_read_cg         = new();
   endfunction : new
 
   virtual function void write(bmu_sequence_item t);
@@ -42,6 +65,7 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
   protected virtual function void sample_observation();
     sample_count++;
     sanity_flow_cg.sample();
+    csr_read_cg.sample();
 
     `uvm_info(
         "COVERAGE_SAMPLE", $sformatf(
@@ -63,10 +87,11 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
 
     `uvm_info("COVERAGE_SUMMARY", $sformatf(
               {
-                "observations=%0d ", "sanity_accept_coverage=%0.2f%%"
+                "observations=%0d sanity_accept_coverage=%0.2f%% ", "csr_read_coverage=%0.2f%%"
               },
               sample_count,
-              sanity_flow_cg.get_inst_coverage()
+              sanity_flow_cg.get_inst_coverage(),
+              csr_read_cg.get_inst_coverage()
               ), UVM_NONE)
   endfunction : report_phase
 
