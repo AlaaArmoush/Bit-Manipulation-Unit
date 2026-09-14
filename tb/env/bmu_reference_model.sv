@@ -14,16 +14,28 @@ class bmu_reference_model extends uvm_object;
       return 1'b0;
     end
 
-    if ((request.csr_ren_in === 1'b1) && (request.ap === '0)) begin
+    if (request.csr_ren_in === 1'b1) begin
       prediction = bmu_sequence_item::type_id::create("csr_read_prediction");
 
+      if (prediction == null) begin
+        `uvm_fatal("NO_PREDICTION", "Failed to create the CSR-read prediction")
+        return 1'b0;
+      end
+
       prediction.copy(request);
-      prediction.result_ff = request.csr_rddata_in;
-      prediction.error     = 1'b0;
 
-      return 1'b1;  // prediction created
+      if (request.ap === '0) begin
+        // CSR-R-01 - CSR-R-04: legal CSR bypass.
+        prediction.result_ff = request.csr_rddata_in;
+        prediction.error     = 1'b0;
+      end else begin
+        // CSR-R-05: Invalid CSR-read control combination
+        prediction.result_ff = 32'h0000_0000;
+        prediction.error     = 1'b1;
+      end
+
+      return 1'b1;
     end
-
     return 1'b0;  // Request not supported
   endfunction : predict
 endclass
