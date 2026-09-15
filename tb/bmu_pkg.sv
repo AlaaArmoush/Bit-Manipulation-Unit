@@ -1,21 +1,40 @@
 `timescale 1ns / 1ps
 
 package bmu_pkg;
+
+  // UVM dependencies
   import uvm_pkg::*;
   `include "uvm_macros.svh"
+
+  // Transaction and sequencer
   `include "agent/bmu_sequence_item.sv"
   `include "agent/bmu_sequencer.sv"
+
+  // Base and sanity sequences
   `include "sequences/bmu_base_sequence.sv"
   `include "sequences/bmu_sanity_sequence.sv"
+
+  // CSR sequences
   `include "sequences/csr/bmu_csr_read_sequence.sv"
+  `include "sequences/csr/bmu_csr_write_sequence.sv"
+
+  // Agent components
   `include "agent/bmu_driver.sv"
   `include "agent/bmu_monitor.sv"
   `include "agent/bmu_agent.sv"
+
+  // Environment components
   `include "env/bmu_reference_model.sv"
   `include "env/bmu_scoreboard.sv"
   `include "env/bmu_coverage_subscriber.sv"
   `include "env/bmu_environment.sv"
+
+  // Base and sanity tests
   `include "tests/bmu_base_test.sv"
   `include "tests/bmu_sanity_test.sv"
+
+  // CSR tests
   `include "tests/csr/bmu_csr_read_test.sv"
-endpackage
+  `include "tests/csr/bmu_csr_write_test.sv"
+
+endpackage : bmu_pkg
