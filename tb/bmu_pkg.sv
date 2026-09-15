@@ -6,6 +6,14 @@ package bmu_pkg;
   import uvm_pkg::*;
   `include "uvm_macros.svh"
 
+  typedef enum {
+    BMU_OP_UNKNOWN,
+    BMU_OP_INVALID_CONTROL,
+    BMU_OP_CSR_READ,
+    BMU_OP_CSR_WRITE_REGISTER,
+    BMU_OP_CSR_WRITE_IMMEDIATE
+  } bmu_operation_e;
+
   // Transaction and sequencer
   `include "agent/bmu_sequence_item.sv"
   `include "agent/bmu_sequencer.sv"
