@@ -89,7 +89,15 @@ class bmu_scoreboard extends uvm_scoreboard;
     result_mismatch    = observation.result_ff !== prediction.result_ff;
     error_mismatch     = observation.error !== prediction.error;
 
-    if ((prediction.csr_ren_in === 1'b1) && (prediction.ap === '0)) begin
+    if (prediction.ap.csr_write === 1'b1) begin
+      if (prediction.error === 1'b1) begin
+        operation_name = "CSR_WRITE_INVALID";
+      end else if (prediction.ap.csr_imm === 1'b1) begin
+        operation_name = "CSR_WRITE_IMMEDIATE";
+      end else begin
+        operation_name = "CSR_WRITE_REGISTER";
+      end
+    end else if ((prediction.csr_ren_in === 1'b1) && (prediction.ap === '0)) begin
       operation_name = "CSR_READ";
     end else begin
       operation_name = "CSR_READ_INVALID";
@@ -114,9 +122,11 @@ class bmu_scoreboard extends uvm_scoreboard;
 
       `uvm_error("SB_MISMATCH",
                  $sformatf({"Transaction %0d FAILED\n", "Operation : %s\n", "CSR data  : 0x%08h\n",
+                            "A         : 0x%08h\n", "B         : 0x%08h\n", "csr_imm   : %0b\n",
                             "AP        : 0x%0h\n", "Result    : expected=0x%08h actual=0x%08h\n",
                             "Error     : expected=%0b actual=%0b\n", "Failed fields: %s"},
                              transaction_number, operation_name, prediction.csr_rddata_in,
+                             prediction.a_in, prediction.b_in, prediction.ap.csr_imm,
                              prediction.ap, prediction.result_ff, observation.result_ff,
                              prediction.error, observation.error, failed_fields))
     end else begin
