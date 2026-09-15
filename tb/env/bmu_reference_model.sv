@@ -6,10 +6,12 @@ class bmu_reference_model extends uvm_object;
   endfunction : new
 
   virtual function bit predict(const ref bmu_sequence_item request,
-                               output bmu_sequence_item prediction);
+                               output bmu_sequence_item prediction,
+                               output bmu_operation_e predicted_operation);
     rtl_pkg::rtl_alu_pkt_t legal_csr_write_ap;
 
     prediction = null;
+    predicted_operation = BMU_OP_UNKNOWN;
 
     if (request == null) begin
       `uvm_fatal("NULL_REQUEST", "The reference model received a null request")
@@ -31,10 +33,12 @@ class bmu_reference_model extends uvm_object;
         // CSR-R-01 - CSR-R-04: legal CSR bypass.
         prediction.result_ff = request.csr_rddata_in;
         prediction.error     = 1'b0;
+        predicted_operation  = BMU_OP_CSR_READ;
       end else begin
         // CSR-R-05: Invalid CSR-read control combination
         prediction.result_ff = 32'h0000_0000;
         prediction.error     = 1'b1;
+        predicted_operation  = BMU_OP_INVALID_CONTROL;
       end
 
       return 1'b1;
@@ -63,14 +67,18 @@ class bmu_reference_model extends uvm_object;
         // immediate mode selects B; register mode selects A.
         if (request.ap.csr_imm === 1'b1) begin
           prediction.result_ff = request.b_in;
+          predicted_operation  = BMU_OP_CSR_WRITE_IMMEDIATE;
         end else begin
           prediction.result_ff = request.a_in;
+          predicted_operation  = BMU_OP_CSR_WRITE_REGISTER;
         end
+
         prediction.error = 1'b0;
       end else begin
         // CSR-W-07: an accepted CSR-write control conflict.
         prediction.result_ff = 32'h0000_0000;
         prediction.error     = 1'b1;
+        predicted_operation  = BMU_OP_INVALID_CONTROL;
       end
 
       return 1'b1;

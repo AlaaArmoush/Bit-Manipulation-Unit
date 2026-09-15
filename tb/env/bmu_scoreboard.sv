@@ -28,6 +28,7 @@ class bmu_scoreboard extends uvm_scoreboard;
   virtual function void write(bmu_sequence_item monitor_transaction);
     bmu_sequence_item observation;
     bmu_sequence_item prediction;
+    bmu_operation_e   predicted_operation;
 
     if (monitor_transaction == null) begin
       `uvm_fatal("NULL_MONITOR_TRANSACTION", "The scoreboard received a null monitor transaction")
@@ -57,7 +58,7 @@ class bmu_scoreboard extends uvm_scoreboard;
     end
 
     if (observation.valid_in === 1'b1) begin
-      if (!reference_model.predict(observation, prediction)) begin
+      if (!reference_model.predict(observation, prediction, predicted_operation)) begin
         mismatch_count++;
 
         `uvm_error("SB_UNSUPPORTED_REQUEST",
@@ -67,7 +68,8 @@ class bmu_scoreboard extends uvm_scoreboard;
         return;
       end
 
-      check_prediction(observation, prediction);
+      check_prediction(observation, prediction, predicted_operation);
+
     end else if (observation.valid_in !== 1'b0) begin
       mismatch_count++;
 
@@ -78,7 +80,8 @@ class bmu_scoreboard extends uvm_scoreboard;
   endfunction : write
 
   protected function void check_prediction(const ref bmu_sequence_item observation,
-                                           const ref bmu_sequence_item prediction);
+                                           const ref bmu_sequence_item prediction,
+                                           input bmu_operation_e predicted_operation);
     int unsigned transaction_number;
     bit          result_mismatch;
     bit          error_mismatch;
@@ -88,22 +91,8 @@ class bmu_scoreboard extends uvm_scoreboard;
     transaction_number = match_count + mismatch_count + 1;
     result_mismatch    = observation.result_ff !== prediction.result_ff;
     error_mismatch     = observation.error !== prediction.error;
-
-    if (prediction.ap.csr_write === 1'b1) begin
-      if (prediction.error === 1'b1) begin
-        operation_name = "CSR_WRITE_INVALID";
-      end else if (prediction.ap.csr_imm === 1'b1) begin
-        operation_name = "CSR_WRITE_IMMEDIATE";
-      end else begin
-        operation_name = "CSR_WRITE_REGISTER";
-      end
-    end else if ((prediction.csr_ren_in === 1'b1) && (prediction.ap === '0)) begin
-      operation_name = "CSR_READ";
-    end else begin
-      operation_name = "CSR_READ_INVALID";
-    end
-
-    failed_fields = "";
+    operation_name     = predicted_operation.name();
+    failed_fields      = "";
 
     if (result_mismatch) begin
       failed_fields = "RESULT";
@@ -133,7 +122,9 @@ class bmu_scoreboard extends uvm_scoreboard;
       match_count++;
 
       `uvm_info("SB_MATCH", $sformatf(
-                "Transaction %0d PASSED: operation=%s result=0x%08h error=%0b",
+                {
+                  "Transaction %0d PASSED: operation=%s ", "result=0x%08h error=%0b"
+                },
                 transaction_number,
                 operation_name,
                 observation.result_ff,
