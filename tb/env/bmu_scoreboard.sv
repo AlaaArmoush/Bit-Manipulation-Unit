@@ -1,14 +1,8 @@
 class bmu_scoreboard extends uvm_scoreboard;
   `uvm_component_utils(bmu_scoreboard)
 
-  typedef struct {
-    bmu_sequence_item prediction;
-    bit error_matched;
-  } pending_entry_t;
-
   uvm_analysis_imp #(bmu_sequence_item, bmu_scoreboard) analysis_imp;
   bmu_reference_model reference_model;
-  protected pending_entry_t pending_predictions[$];
   int unsigned match_count;
   int unsigned mismatch_count;
 
@@ -30,9 +24,8 @@ class bmu_scoreboard extends uvm_scoreboard;
   virtual function void write(bmu_sequence_item monitor_transaction);
     bmu_sequence_item observation;
     bmu_sequence_item prediction;
-    pending_entry_t entry;
+    bit error_matched;
     bit result_matched;
-    int unsigned discarded_count;
 
     if (monitor_transaction == null) begin
       `uvm_fatal("NULL_MONITOR_TRANSACTION", "The scoreboard received a null monitor transaction")
@@ -40,56 +33,51 @@ class bmu_scoreboard extends uvm_scoreboard;
     end
 
     observation = bmu_sequence_item::type_id::create("scoreboard_observation");
+
+    if (observation == null) begin
+      `uvm_fatal("NO_SCOREBOARD_OBSERVATION", "Failed to create a stable scoreboard observation")
+      return;
+    end
+
     observation.copy(monitor_transaction);
 
     if (observation.rst_l === 1'b0) begin
-      discarded_count = pending_predictions.size();
-      pending_predictions.delete();
-      if (discarded_count != 0) begin
-        `uvm_info("RESET_FLUSH", $sformatf("Active reset edge discarded %0d pending prediction(s)",
-                                           discarded_count), UVM_MEDIUM)
-      end
       return;
     end
 
     if (observation.rst_l !== 1'b1) begin
       mismatch_count++;
-      `uvm_error("UNKNOWN_RESET", $sformatf("Reset is X/Z at a monitor observation: %s",
-                                            observation.convert2string()))
+      `uvm_error("SB_UNKNOWN_RESET", $sformatf(
+                                         "Reset is X/Z at a monitor observation\nObservation: %s",
+                                         observation.convert2string()))
       return;
-    end
-
-    if (pending_predictions.size() != 0) begin
-      entry = pending_predictions.pop_front();
-      result_matched = compare_result(observation, entry.prediction);
-      if (entry.error_matched && result_matched) begin
-        match_count++;
-        `uvm_info("TRANSACTION_MATCH",
-                  $sformatf("Expected and actual transaction matched: result=0x%08h request={%s}",
-                            observation.result_ff, entry.prediction.convert2string()), UVM_LOW)
-      end else if (entry.error_matched && !result_matched) begin
-        mismatch_count++;
-      end
     end
 
     if (observation.valid_in === 1'b1) begin
       if (!reference_model.predict(observation, prediction)) begin
         mismatch_count++;
-        `uvm_error("UNSUPPORTED_REQUEST",
+        `uvm_error("SB_UNSUPPORTED_REQUEST",
                    $sformatf("Accepted request has no implemented reference-model rule: %s",
                              observation.convert2string()))
         return;
       end
-      entry.prediction = prediction;
-      entry.error_matched = compare_immediate_error(observation, prediction);
-      if (!entry.error_matched) begin
+
+      error_matched  = compare_immediate_error(observation, prediction);
+      result_matched = compare_result(observation, prediction);
+
+      if (error_matched && result_matched) begin
+        match_count++;
+        `uvm_info("TRANSACTION_MATCH",
+                  $sformatf("Expected and actual transaction matched: result=0x%08h request={%s}",
+                            observation.result_ff, prediction.convert2string()), UVM_LOW)
+      end else begin
         mismatch_count++;
       end
-      pending_predictions.push_back(entry);
     end else if (observation.valid_in !== 1'b0) begin
       mismatch_count++;
-      `uvm_error("UNKNOWN_VALID", $sformatf("valid_in is X/Z at a monitor observation: %s",
-                                            observation.convert2string()))
+      `uvm_error("SB_UNKNOWN_VALID",
+                 $sformatf("valid_in is X/Z at a monitor observation\nObservation: %s",
+                           observation.convert2string()))
     end
   endfunction : write
 
@@ -119,31 +107,24 @@ class bmu_scoreboard extends uvm_scoreboard;
 
   virtual function void check_phase(uvm_phase phase);
     super.check_phase(phase);
-    if (pending_predictions.size() != 0) begin
-      `uvm_error("PENDING_PREDICTIONS", $sformatf(
-                                            "%0d prediction(s) remained pending at end of test",
-                                            pending_predictions.size()))
-    end
-    if ((match_count == 0) && (mismatch_count == 0) && (pending_predictions.size() == 0)) begin
-      `uvm_error("NO_CHECKS", "The scoreboard completed without checking any transaction")
+
+    if ((match_count == 0) && (mismatch_count == 0)) begin
+      `uvm_error("NO_CHECKS", "The scoreboard completed without checking any accepted transaction")
     end
   endfunction : check_phase
 
   virtual function void report_phase(uvm_phase phase);
     super.report_phase(phase);
-    if ((match_count > 0) && (mismatch_count == 0) && (pending_predictions.size() == 0)) begin
-      `uvm_info("SCOREBOARD_PASS", $sformatf("PASS: matches=%0d mismatches=%0d pending=%0d",
-                                             match_count, mismatch_count,
-                                             pending_predictions.size()), UVM_NONE)
+
+    if ((match_count > 0) && (mismatch_count == 0)) begin
+      `uvm_info("SCOREBOARD_PASS", $sformatf("PASS: matches=%0d mismatches=%0d", match_count,
+                                             mismatch_count), UVM_NONE)
     end else begin
       `uvm_error("SCOREBOARD_FAIL", $sformatf(
-                 "FAIL: matches=%0d mismatches=%0d pending=%0d",
-                 match_count,
-                 mismatch_count,
-                 pending_predictions.size()
-                 ))
+                 "FAIL: matches=%0d mismatches=%0d", match_count, mismatch_count))
     end
   endfunction : report_phase
+
 endclass
 
 
