@@ -9,6 +9,7 @@ class bmu_reference_model extends uvm_object;
                                output bmu_sequence_item prediction,
                                output bmu_operation_e predicted_operation);
     rtl_pkg::rtl_alu_pkt_t legal_csr_write_ap;
+    rtl_pkg::rtl_alu_pkt_t legal_or_orn_ap;
 
     prediction = null;
     predicted_operation = BMU_OP_UNKNOWN;
@@ -79,6 +80,46 @@ class bmu_reference_model extends uvm_object;
         prediction.result_ff = 32'h0000_0000;
         prediction.error     = 1'b1;
         predicted_operation  = BMU_OP_INVALID_CONTROL;
+      end
+
+      // OR / ORN
+      if (request.ap.lor === 1'b1) begin
+        prediction = bmu_sequence_item::type_id::create("or_orn_prediction");
+
+        if (prediction == null) begin
+          `uvm_fatal("NO_PREDICTION", "Failed to create the OR/ORN prediction")
+          return 1'b0;
+        end
+
+        prediction.copy(request);
+
+        legal_or_orn_ap     = '0;
+        legal_or_orn_ap.lor = 1'b1;
+        legal_or_orn_ap.zbb = request.ap.zbb;
+
+        if ((request.csr_ren_in === 1'b0) &&
+          ((request.ap.zbb === 1'b0) ||
+           (request.ap.zbb === 1'b1)) &&
+          (request.ap === legal_or_orn_ap)) begin
+          if (request.ap.zbb === 1'b1) begin
+            // OR-01 through OR-04 in ORN mode.
+            prediction.result_ff = request.a_in | ~request.b_in;
+            predicted_operation  = BMU_OP_ORN;
+          end else begin
+            // OR-01 through OR-04 in OR mode.
+            prediction.result_ff = request.a_in | request.b_in;
+            predicted_operation  = BMU_OP_OR;
+          end
+
+          prediction.error = 1'b0;
+        end else begin
+          // OR-I-01: accepted OR/ORN request with conflicting controls.
+          prediction.result_ff = 32'h0000_0000;
+          prediction.error     = 1'b1;
+          predicted_operation  = BMU_OP_INVALID_CONTROL;
+        end
+
+        return 1'b1;
       end
 
       return 1'b1;
