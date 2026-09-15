@@ -49,16 +49,6 @@ class bmu_csr_read_sequence extends bmu_base_sequence;
     send_bmu_request(request);
   endtask : body
 
-  protected function bmu_sequence_item create_request(string request_name);
-    bmu_sequence_item request;
-    request = bmu_sequence_item::type_id::create(request_name);
-    if (request == null) begin
-      `uvm_fatal("NO_CSR_READ_REQUEST", $sformatf("Failed to create CSR read request '%s'",
-                                                  request_name))
-    end
-    return request;
-  endfunction : create_request
-
   protected task send_legal_csr_read(string request_name, logic [31:0] csr_data);
     bmu_sequence_item request;
     request = create_request(request_name);
