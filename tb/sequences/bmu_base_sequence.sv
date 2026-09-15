@@ -20,6 +20,19 @@ class bmu_base_sequence extends uvm_sequence #(bmu_sequence_item);
     request.b_in          = '0;
   endfunction : apply_legal_defaults
 
+  protected function bmu_sequence_item create_request(string request_name);
+    bmu_sequence_item request;
+
+    request = bmu_sequence_item::type_id::create(request_name);
+
+    if (request == null) begin
+      `uvm_fatal("NO_BMU_REQUEST", $sformatf("Sequence '%s' failed to create BMU request '%s'",
+                                             get_name(), request_name))
+    end
+
+    return request;
+  endfunction : create_request
+
   protected task send_bmu_request(bmu_sequence_item request);
     if (request == null) begin
       `uvm_fatal("NULL_REQUEST", "Cannot send a null sequence item")

@@ -10,13 +10,16 @@ class bmu_csr_read_sequence extends bmu_base_sequence;
 
   virtual task body();
     bmu_sequence_item request;
-
+    // CSR-R-01: legal directed CSR bypass.
     send_legal_csr_read("directed_request", 32'hA5C3_5A3C);
 
+    // CSR-R-02: all-zero CSR data boundary.
     send_legal_csr_read("all_zero_request", '0);
 
+    // CSR-R-03: all-one CSR data boundary.
     send_legal_csr_read("all_one_request", '1);
 
+    // CSR-R-04: random non-boundary CSR data.
     for (int unsigned i = 0; i < RANDOM_TRIAL_COUNT; i++) begin
       request = create_request($sformatf("random_request_%0d", i));
       apply_legal_defaults(request);
@@ -38,6 +41,7 @@ class bmu_csr_read_sequence extends bmu_base_sequence;
       send_bmu_request(request);
     end
 
+    // CSR-R-05: CSR read combined with the in-scope OR control.
     request = create_request("invalid_or_conflict_request");
     apply_legal_defaults(request);
     request.csr_ren_in    = 1'b1;
@@ -48,16 +52,6 @@ class bmu_csr_read_sequence extends bmu_base_sequence;
               "CSR-R-05 invalid conflict: CSR read combined with in-scope OR control", UVM_MEDIUM)
     send_bmu_request(request);
   endtask : body
-
-  protected function bmu_sequence_item create_request(string request_name);
-    bmu_sequence_item request;
-    request = bmu_sequence_item::type_id::create(request_name);
-    if (request == null) begin
-      `uvm_fatal("NO_CSR_READ_REQUEST", $sformatf("Failed to create CSR read request '%s'",
-                                                  request_name))
-    end
-    return request;
-  endfunction : create_request
 
   protected task send_legal_csr_read(string request_name, logic [31:0] csr_data);
     bmu_sequence_item request;
