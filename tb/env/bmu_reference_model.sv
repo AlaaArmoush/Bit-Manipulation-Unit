@@ -7,8 +7,9 @@ class bmu_reference_model extends uvm_object;
 
   virtual function bit predict(const ref bmu_sequence_item request,
                                output bmu_sequence_item prediction);
-    prediction = null;
     rtl_pkg::rtl_alu_pkt_t legal_csr_write_ap;
+
+    prediction = null;
 
     if (request == null) begin
       `uvm_fatal("NULL_REQUEST", "The reference model received a null request")
