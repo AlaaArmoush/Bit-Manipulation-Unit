@@ -59,16 +59,16 @@ class bmu_xor_xnor_sequence extends bmu_base_sequence;
       send_bmu_request(request);
     end
 
-    // XOR-I-01: lxor combined with the in-scope OR control.
-    request = create_request("invalid_or_conflict_request");
+    // XOR-I-01: lxor combined with the in-scope SRL control.
+    request = create_request("invalid_srl_conflict_request");
     apply_legal_defaults(request);
 
     request.ap.lxor = 1'b1;
-    request.ap.lor  = 1'b1;
+    request.ap.srl  = 1'b1;
     request.a_in    = 32'h1357_9BDF;
     request.b_in    = 32'h2468_ACE0;
 
-    `uvm_info("XOR_XNOR_STIMULUS", "XOR-I-01 invalid conflict: lxor combined with in-scope lor",
+    `uvm_info("XOR_XNOR_STIMULUS", "XOR-I-01 invalid conflict: lxor combined with in-scope srl",
               UVM_MEDIUM)
 
     send_bmu_request(request);
