@@ -49,6 +49,28 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     );
   endfunction : is_legal_or_orn_sample
 
+  protected function bit is_legal_xor_xnor_sample();
+    rtl_pkg::rtl_alu_pkt_t legal_ap;
+
+    if (sampled_transaction == null) begin
+      return 1'b0;
+    end
+
+    legal_ap      = '0;
+    legal_ap.lxor = 1'b1;
+    legal_ap.zbb  = sampled_transaction.ap.zbb;
+
+    return (
+        (sampled_transaction.rst_l      === 1'b1) &&
+        (sampled_transaction.valid_in   === 1'b1) &&
+        (sampled_transaction.csr_ren_in === 1'b0) &&
+        (sampled_transaction.ap.lxor    === 1'b1) &&
+        ((sampled_transaction.ap.zbb    === 1'b0) ||
+         (sampled_transaction.ap.zbb    === 1'b1)) &&
+        (sampled_transaction.ap         === legal_ap)
+    );
+  endfunction : is_legal_xor_xnor_sample
+
   covergroup sanity_flow_cg;
     //track each individual instance instead of global pooling
     option.per_instance = 1;
@@ -141,6 +163,40 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     }
   endgroup : or_orn_cg
 
+  covergroup xor_xnor_cg;
+    option.per_instance = 1;
+
+    xor_xnor_mode_cp: coverpoint sampled_transaction.ap.zbb iff (is_legal_xor_xnor_sample()) {
+      bins xor_mode = {1'b0}; bins xnor_mode = {1'b1};
+    }
+
+    xor_xnor_operand_class_cp: coverpoint (
+        ({sampled_transaction.a_in, sampled_transaction.b_in} ===
+         64'h0000_0000_0000_0000) ? 3'd0 :
+        ({sampled_transaction.a_in, sampled_transaction.b_in} ===
+         64'hFFFF_FFFF_FFFF_FFFF) ? 3'd1 :
+        (sampled_transaction.a_in === sampled_transaction.b_in) ? 3'd2 :
+        (sampled_transaction.a_in === ~sampled_transaction.b_in) ? 3'd3 :
+                                                                    3'd4
+    ) iff (is_legal_xor_xnor_sample()) {
+      bins all_zero = {3'd0};
+      bins all_one = {3'd1};
+      bins equal_non_boundary = {3'd2};
+      bins complementary = {3'd3};
+      bins random_other = {3'd4};
+    }
+
+    xor_xnor_mode_operand_cross: cross xor_xnor_mode_cp, xor_xnor_operand_class_cp;
+
+    xor_xnor_invalid_control_cp:
+        coverpoint (!is_legal_xor_xnor_sample())
+        iff ((sampled_transaction.rst_l    === 1'b1) &&
+             (sampled_transaction.valid_in === 1'b1) &&
+             (sampled_transaction.ap.lxor  === 1'b1)) {
+      bins invalid = {1'b1}; ignore_bins legal = {1'b0};
+    }
+  endgroup : xor_xnor_cg
+
   function new(string name = "bmu_coverage_subscriber", uvm_component parent = null);
     super.new(name, parent);
 
@@ -150,6 +206,7 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     csr_read_cg         = new();
     csr_write_cg        = new();
     or_orn_cg           = new();
+    xor_xnor_cg         = new();
   endfunction : new
 
   virtual function void write(bmu_sequence_item t);
@@ -175,6 +232,7 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     csr_read_cg.sample();
     csr_write_cg.sample();
     or_orn_cg.sample();
+    xor_xnor_cg.sample();
 
     `uvm_info(
         "COVERAGE_SAMPLE", $sformatf(
@@ -198,13 +256,14 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
               {
                 "observations=%0d sanity_accept_coverage=%0.2f%% ",
                 "csr_read_coverage=%0.2f%% csr_write_coverage=%0.2f%% ",
-                "or_orn_coverage=%0.2f%%"
+                "or_orn_coverage=%0.2f%% xor_xnor_coverage=%0.2f%%"
               },
               sample_count,
               sanity_flow_cg.get_inst_coverage(),
               csr_read_cg.get_inst_coverage(),
               csr_write_cg.get_inst_coverage(),
-              or_orn_cg.get_inst_coverage()
+              or_orn_cg.get_inst_coverage(),
+              xor_xnor_cg.get_inst_coverage()
               ), UVM_NONE)
   endfunction : report_phase
 

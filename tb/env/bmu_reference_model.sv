@@ -10,6 +10,7 @@ class bmu_reference_model extends uvm_object;
                                output bmu_operation_e predicted_operation);
     rtl_pkg::rtl_alu_pkt_t legal_csr_write_ap;
     rtl_pkg::rtl_alu_pkt_t legal_or_orn_ap;
+    rtl_pkg::rtl_alu_pkt_t legal_xor_xnor_ap;
 
     prediction          = null;
     predicted_operation = BMU_OP_UNKNOWN;
@@ -125,6 +126,45 @@ class bmu_reference_model extends uvm_object;
       return 1'b1;
     end
 
+    // XOR / XNOR
+    if (request.ap.lxor === 1'b1) begin
+      prediction = bmu_sequence_item::type_id::create("xor_xnor_prediction");
+
+      if (prediction == null) begin
+        `uvm_fatal("NO_PREDICTION", "Failed to create the XOR/XNOR prediction")
+        return 1'b0;
+      end
+
+      prediction.copy(request);
+
+      legal_xor_xnor_ap      = '0;
+      legal_xor_xnor_ap.lxor = 1'b1;
+      legal_xor_xnor_ap.zbb  = request.ap.zbb;
+
+      if ((request.csr_ren_in === 1'b0) &&
+          ((request.ap.zbb === 1'b0) ||
+           (request.ap.zbb === 1'b1)) &&
+          (request.ap === legal_xor_xnor_ap)) begin
+        if (request.ap.zbb === 1'b1) begin
+          // XOR-01 through XOR-05 in XNOR mode.
+          prediction.result_ff = request.a_in ^ ~request.b_in;
+          predicted_operation  = BMU_OP_XNOR;
+        end else begin
+          // XOR-01 through XOR-05 in XOR mode.
+          prediction.result_ff = request.a_in ^ request.b_in;
+          predicted_operation  = BMU_OP_XOR;
+        end
+
+        prediction.error = 1'b0;
+      end else begin
+        // XOR-I-01: accepted XOR/XNOR request with conflicting controls.
+        prediction.result_ff = 32'h0000_0000;
+        prediction.error     = 1'b1;
+        predicted_operation  = BMU_OP_INVALID_CONTROL;
+      end
+
+      return 1'b1;
+    end
     return 1'b0;  // Request not supported.
   endfunction : predict
 
