@@ -3,6 +3,8 @@ class bmu_csr_read_test extends bmu_base_test;
 
   function new(string name = "bmu_csr_read_test", uvm_component parent = null);
     super.new(name, parent);
+
+    test_timeout = 2us;
   endfunction : new
 
   virtual task run_phase(uvm_phase phase);
