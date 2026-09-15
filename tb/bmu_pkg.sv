@@ -11,7 +11,9 @@ package bmu_pkg;
     BMU_OP_INVALID_CONTROL,
     BMU_OP_CSR_READ,
     BMU_OP_CSR_WRITE_REGISTER,
-    BMU_OP_CSR_WRITE_IMMEDIATE
+    BMU_OP_CSR_WRITE_IMMEDIATE,
+    BMU_OP_OR,
+    BMU_OP_ORN
   } bmu_operation_e;
 
   // Transaction and sequencer
@@ -25,6 +27,9 @@ package bmu_pkg;
   // CSR sequences
   `include "sequences/csr/bmu_csr_read_sequence.sv"
   `include "sequences/csr/bmu_csr_write_sequence.sv"
+
+  // Zbb sequences
+  `include "sequences/zbb/bmu_or_orn_sequence.sv"
 
   // Agent components
   `include "agent/bmu_driver.sv"
@@ -44,5 +49,8 @@ package bmu_pkg;
   // CSR tests
   `include "tests/csr/bmu_csr_read_test.sv"
   `include "tests/csr/bmu_csr_write_test.sv"
+
+  // Zbb tests
+  `include "tests/zbb/bmu_or_orn_test.sv"
 
 endpackage : bmu_pkg
