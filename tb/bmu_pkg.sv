@@ -7,6 +7,7 @@ package bmu_pkg;
   `include "agent/bmu_sequencer.sv"
   `include "sequences/bmu_base_sequence.sv"
   `include "sequences/bmu_sanity_sequence.sv"
+  `include "sequences/csr/bmu_csr_read_sequence.sv"
   `include "agent/bmu_driver.sv"
   `include "agent/bmu_monitor.sv"
   `include "agent/bmu_agent.sv"
@@ -16,4 +17,5 @@ package bmu_pkg;
   `include "env/bmu_environment.sv"
   `include "tests/bmu_base_test.sv"
   `include "tests/bmu_sanity_test.sv"
+  `include "tests/csr/bmu_csr_read_test.sv"
 endpackage
