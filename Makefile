@@ -5,7 +5,7 @@ SHELL := /bin/bash
 
 XRUN           ?= xrun
 XRUN_FLAGS     ?= -64bit -sv -uvm -coverage functional -timescale 1ns/1ps
-XRUN_RUN_FLAGS ?= -64bit -R -coverage functional
+XRUN_RUN_FLAGS ?= -64bit -R -coverage functional -covoverwrite
 
 TOP          ?= tb_top
 SNAPSHOT     ?= bmu_tb_snapshot
