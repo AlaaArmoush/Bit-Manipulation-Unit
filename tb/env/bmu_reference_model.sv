@@ -15,6 +15,7 @@ class bmu_reference_model extends uvm_object;
     rtl_pkg::rtl_alu_pkt_t legal_sra_ap;
     rtl_pkg::rtl_alu_pkt_t legal_ror_ap;
     rtl_pkg::rtl_alu_pkt_t legal_binv_ap;
+    rtl_pkg::rtl_alu_pkt_t legal_sh2add_ap;
 
     prediction          = null;
     predicted_operation = BMU_OP_UNKNOWN;
@@ -284,6 +285,39 @@ class bmu_reference_model extends uvm_object;
         predicted_operation  = BMU_OP_BINV;
       end else begin
         // BINV-I-01: accepted BINV request with conflicting controls.
+        prediction.result_ff = 32'h0000_0000;
+        prediction.error     = 1'b1;
+        predicted_operation  = BMU_OP_INVALID_CONTROL;
+      end
+
+      return 1'b1;
+    end
+
+    // Shift Left by Two and Add
+    if (request.ap.sh2add === 1'b1) begin
+      prediction = bmu_sequence_item::type_id::create("sh2add_prediction");
+
+      if (prediction == null) begin
+        `uvm_fatal("NO_PREDICTION", "Failed to create the SH2ADD prediction")
+        return 1'b0;
+      end
+
+      prediction.copy(request);
+
+      legal_sh2add_ap        = '0;
+      legal_sh2add_ap.sh2add = 1'b1;
+      legal_sh2add_ap.zba    = 1'b1;
+
+      if ((request.csr_ren_in === 1'b0) && (request.ap === legal_sh2add_ap)) begin
+        // SH2-01 through SH2-04:
+        // A is always shifted left by exactly two. The 32-bit assignment
+        // retains the low 32 bits of the modular addition.
+        prediction.result_ff =
+            ($unsigned(request.a_in) << 2) + $unsigned(request.b_in);
+        prediction.error    = 1'b0;
+        predicted_operation = BMU_OP_SH2ADD;
+      end else begin
+        // SH2-I-01 and SH2-I-02: missing Zba mode or conflicting controls.
         prediction.result_ff = 32'h0000_0000;
         prediction.error     = 1'b1;
         predicted_operation  = BMU_OP_INVALID_CONTROL;
