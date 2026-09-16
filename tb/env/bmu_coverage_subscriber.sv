@@ -144,6 +144,25 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     );
   endfunction : is_legal_binv_sample
 
+  protected function bit is_legal_sh2add_sample();
+    rtl_pkg::rtl_alu_pkt_t legal_ap;
+
+    if (sampled_transaction == null) begin
+      return 1'b0;
+    end
+
+    legal_ap        = '0;
+    legal_ap.sh2add = 1'b1;
+    legal_ap.zba    = 1'b1;
+
+    return (
+        (sampled_transaction.rst_l      === 1'b1) &&
+        (sampled_transaction.valid_in   === 1'b1) &&
+        (sampled_transaction.csr_ren_in === 1'b0) &&
+        (sampled_transaction.ap         === legal_ap)
+    );
+  endfunction : is_legal_sh2add_sample
+
   // COVERGROUPS
   covergroup sanity_flow_cg;
     //track each individual instance instead of global pooling
@@ -330,6 +349,44 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     binv_index_selected_bit_cross: cross binv_index_class_cp, binv_selected_bit_cp;
   endgroup : binv_cg
 
+  covergroup sh2add_cg;
+    option.per_instance = 1;
+
+    sh2add_a_data_class_cp: coverpoint $unsigned(
+        sampled_transaction.a_in
+    ) iff (is_legal_sh2add_sample()) {
+      bins zero = {32'h0000_0000};
+      bins all_one = {32'hFFFF_FFFF};
+      bins non_boundary = {[32'h0000_0001 : 32'hFFFF_FFFE]};
+    }
+
+    sh2add_b_data_class_cp:
+        coverpoint (
+            (sampled_transaction.b_in === 32'h0000_0000) ? 3'd0 :
+            (sampled_transaction.b_in === 32'hFFFF_FFFF) ? 3'd1 :
+            (sampled_transaction.b_in[4:0] === 5'd0)     ? 3'd2 :
+            (sampled_transaction.b_in[4:0] === 5'd31)    ? 3'd3 :
+                                                               3'd4
+        ) iff (is_legal_sh2add_sample()) {
+      bins zero = {3'd0};
+      bins all_one = {3'd1};
+      bins low_five_zero = {3'd2};
+      bins low_five_maximum = {3'd3};
+      bins other = {3'd4};
+    }
+
+    sh2add_control_class_cp:
+        coverpoint (
+            (sampled_transaction.ap.zba !== 1'b1) ? 2'd1 :
+            is_legal_sh2add_sample()               ? 2'd0 :
+                                                     2'd2
+        ) iff ((sampled_transaction.rst_l      === 1'b1) &&
+               (sampled_transaction.valid_in   === 1'b1) &&
+               (sampled_transaction.ap.sh2add  === 1'b1)) {
+      bins legal_zba = {2'd0}; bins missing_zba = {2'd1}; bins conflicting_control = {2'd2};
+    }
+  endgroup : sh2add_cg
+
   function new(string name = "bmu_coverage_subscriber", uvm_component parent = null);
     super.new(name, parent);
 
@@ -344,6 +401,7 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     sra_cg              = new();
     ror_cg              = new();
     binv_cg             = new();
+    sh2add_cg           = new();
   endfunction : new
 
   virtual function void write(bmu_sequence_item t);
@@ -374,6 +432,7 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     sra_cg.sample();
     ror_cg.sample();
     binv_cg.sample();
+    sh2add_cg.sample();
 
     `uvm_info(
         "COVERAGE_SAMPLE", $sformatf(
@@ -399,7 +458,8 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
                 "csr_read_coverage=%0.2f%% csr_write_coverage=%0.2f%% ",
                 "or_orn_coverage=%0.2f%% xor_xnor_coverage=%0.2f%% ",
                 "srl_coverage=%0.2f%% sra_coverage=%0.2f%% ",
-                "ror_coverage=%0.2f%% binv_coverage=%0.2f%%"
+                "ror_coverage=%0.2f%% binv_coverage=%0.2f%% ",
+                "sh2add_coverage=%0.2f%%"
               },
               sample_count,
               sanity_flow_cg.get_inst_coverage(),
@@ -410,7 +470,8 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
               srl_cg.get_inst_coverage(),
               sra_cg.get_inst_coverage(),
               ror_cg.get_inst_coverage(),
-              binv_cg.get_inst_coverage()
+              binv_cg.get_inst_coverage(),
+              sh2add_cg.get_inst_coverage()
               ), UVM_NONE)
   endfunction : report_phase
 
