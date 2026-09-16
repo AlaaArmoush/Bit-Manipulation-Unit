@@ -14,6 +14,7 @@ class bmu_reference_model extends uvm_object;
     rtl_pkg::rtl_alu_pkt_t legal_srl_ap;
     rtl_pkg::rtl_alu_pkt_t legal_sra_ap;
     rtl_pkg::rtl_alu_pkt_t legal_ror_ap;
+    rtl_pkg::rtl_alu_pkt_t legal_binv_ap;
 
     prediction          = null;
     predicted_operation = BMU_OP_UNKNOWN;
@@ -253,6 +254,36 @@ class bmu_reference_model extends uvm_object;
         predicted_operation = BMU_OP_ROR;
       end else begin
         // ROR-03: accepted ROR request with conflicting controls.
+        prediction.result_ff = 32'h0000_0000;
+        prediction.error     = 1'b1;
+        predicted_operation  = BMU_OP_INVALID_CONTROL;
+      end
+
+      return 1'b1;
+    end
+
+    // Bit Invert
+    if (request.ap.binv === 1'b1) begin
+      prediction = bmu_sequence_item::type_id::create("binv_prediction");
+
+      if (prediction == null) begin
+        `uvm_fatal("NO_PREDICTION", "Failed to create the BINV prediction")
+        return 1'b0;
+      end
+
+      prediction.copy(request);
+
+      legal_binv_ap      = '0;
+      legal_binv_ap.binv = 1'b1;
+
+      if ((request.csr_ren_in === 1'b0) && (request.ap === legal_binv_ap)) begin
+        // BINV-01 through BINV-06:
+        // only b_in[4:0] selects the bit toggled in operand A.
+        prediction.result_ff = request.a_in ^ (32'b1 << request.b_in[4:0]);
+        prediction.error     = 1'b0;
+        predicted_operation  = BMU_OP_BINV;
+      end else begin
+        // BINV-I-01: accepted BINV request with conflicting controls.
         prediction.result_ff = 32'h0000_0000;
         prediction.error     = 1'b1;
         predicted_operation  = BMU_OP_INVALID_CONTROL;
