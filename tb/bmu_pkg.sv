@@ -15,7 +15,8 @@ package bmu_pkg;
     BMU_OP_OR,
     BMU_OP_ORN,
     BMU_OP_XOR,
-    BMU_OP_XNOR
+    BMU_OP_XNOR,
+    BMU_OP_SRL
   } bmu_operation_e;
 
   // Transaction and sequencer
@@ -29,6 +30,9 @@ package bmu_pkg;
   // CSR sequences
   `include "sequences/csr/bmu_csr_read_sequence.sv"
   `include "sequences/csr/bmu_csr_write_sequence.sv"
+
+  // Base-integer sequences
+  `include "sequences/base_integer/bmu_srl_sequence.sv"
 
   // Zbb sequences
   `include "sequences/zbb/bmu_or_orn_sequence.sv"
@@ -52,6 +56,9 @@ package bmu_pkg;
   // CSR tests
   `include "tests/csr/bmu_csr_read_test.sv"
   `include "tests/csr/bmu_csr_write_test.sv"
+
+  // Base-integer tests
+  `include "tests/base_integer/bmu_srl_test.sv"
 
   // Zbb tests
   `include "tests/zbb/bmu_or_orn_test.sv"
