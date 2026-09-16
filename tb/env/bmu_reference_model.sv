@@ -12,6 +12,7 @@ class bmu_reference_model extends uvm_object;
     rtl_pkg::rtl_alu_pkt_t legal_or_orn_ap;
     rtl_pkg::rtl_alu_pkt_t legal_xor_xnor_ap;
     rtl_pkg::rtl_alu_pkt_t legal_srl_ap;
+    rtl_pkg::rtl_alu_pkt_t legal_sra_ap;
 
     prediction          = null;
     predicted_operation = BMU_OP_UNKNOWN;
@@ -189,6 +190,36 @@ class bmu_reference_model extends uvm_object;
         predicted_operation  = BMU_OP_SRL;
       end else begin
         // SRL-03: accepted SRL request with conflicting controls.
+        prediction.result_ff = 32'h0000_0000;
+        prediction.error     = 1'b1;
+        predicted_operation  = BMU_OP_INVALID_CONTROL;
+      end
+
+      return 1'b1;
+    end
+
+    // Shift Right Arithmetic
+    if (request.ap.sra === 1'b1) begin
+      prediction = bmu_sequence_item::type_id::create("sra_prediction");
+
+      if (prediction == null) begin
+        `uvm_fatal("NO_PREDICTION", "Failed to create the SRA prediction")
+        return 1'b0;
+      end
+
+      prediction.copy(request);
+
+      legal_sra_ap     = '0;
+      legal_sra_ap.sra = 1'b1;
+
+      if ((request.csr_ren_in === 1'b0) && (request.ap === legal_sra_ap)) begin
+        // SRA-01, SRA-02, SRA-04, SRA-05, and SRA-06:
+        // interpret A as a signed 32-bit value and use only b_in[4:0].
+        prediction.result_ff = $signed(request.a_in) >>> request.b_in[4:0];
+        prediction.error     = 1'b0;
+        predicted_operation  = BMU_OP_SRA;
+      end else begin
+        // SRA-03: accepted SRA request with conflicting controls.
         prediction.result_ff = 32'h0000_0000;
         prediction.error     = 1'b1;
         predicted_operation  = BMU_OP_INVALID_CONTROL;
