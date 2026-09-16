@@ -16,6 +16,7 @@ class bmu_reference_model extends uvm_object;
     rtl_pkg::rtl_alu_pkt_t legal_ror_ap;
     rtl_pkg::rtl_alu_pkt_t legal_binv_ap;
     rtl_pkg::rtl_alu_pkt_t legal_sh2add_ap;
+    rtl_pkg::rtl_alu_pkt_t legal_sub_ap;
 
     prediction          = null;
     predicted_operation = BMU_OP_UNKNOWN;
@@ -318,6 +319,36 @@ class bmu_reference_model extends uvm_object;
         predicted_operation = BMU_OP_SH2ADD;
       end else begin
         // SH2-I-01 and SH2-I-02: missing Zba mode or conflicting controls.
+        prediction.result_ff = 32'h0000_0000;
+        prediction.error     = 1'b1;
+        predicted_operation  = BMU_OP_INVALID_CONTROL;
+      end
+
+      return 1'b1;
+    end
+
+    // Subtraction
+    if ((request.ap.sub === 1'b1) && (request.ap.slt === 1'b0) && (request.ap.max === 1'b0)) begin
+      prediction = bmu_sequence_item::type_id::create("sub_prediction");
+
+      if (prediction == null) begin
+        `uvm_fatal("NO_PREDICTION", "Failed to create the SUB prediction")
+        return 1'b0;
+      end
+
+      prediction.copy(request);
+
+      legal_sub_ap     = '0;
+      legal_sub_ap.sub = 1'b1;
+
+      if ((request.csr_ren_in === 1'b0) && (request.ap === legal_sub_ap)) begin
+        // SUB-01 through SUB-04:
+        prediction.result_ff = $unsigned(request.a_in) - $unsigned(request.b_in);
+        prediction.error     = 1'b0;
+        predicted_operation  = BMU_OP_SUB;
+      end else begin
+        // SUB-I-01 and SUB-I-02: prohibited Zba mode or another
+        // conflicting control.
         prediction.result_ff = 32'h0000_0000;
         prediction.error     = 1'b1;
         predicted_operation  = BMU_OP_INVALID_CONTROL;
