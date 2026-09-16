@@ -20,7 +20,8 @@ package bmu_pkg;
     BMU_OP_SRA,
     BMU_OP_ROR,
     BMU_OP_BINV,
-    BMU_OP_SH2ADD
+    BMU_OP_SH2ADD,
+    BMU_OP_SUB
   } bmu_operation_e;
 
   // Transaction and sequencer
@@ -38,6 +39,7 @@ package bmu_pkg;
   // Base-integer sequences
   `include "sequences/base_integer/bmu_srl_sequence.sv"
   `include "sequences/base_integer/bmu_sra_sequence.sv"
+  `include "sequences/base_integer/bmu_sub_sequence.sv"
 
   // Zba sequences
   `include "sequences/zba/bmu_sh2add_sequence.sv"
@@ -74,6 +76,7 @@ package bmu_pkg;
   // Base-integer tests
   `include "tests/base_integer/bmu_srl_test.sv"
   `include "tests/base_integer/bmu_sra_test.sv"
+  `include "tests/base_integer/bmu_sub_test.sv"
 
   // Zba tests
   `include "tests/zba/bmu_sh2add_test.sv"
