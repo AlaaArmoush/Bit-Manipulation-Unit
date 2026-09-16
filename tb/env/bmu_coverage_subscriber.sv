@@ -126,6 +126,24 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     );
   endfunction : is_legal_ror_sample
 
+  protected function bit is_legal_binv_sample();
+    rtl_pkg::rtl_alu_pkt_t legal_ap;
+
+    if (sampled_transaction == null) begin
+      return 1'b0;
+    end
+
+    legal_ap      = '0;
+    legal_ap.binv = 1'b1;
+
+    return (
+        (sampled_transaction.rst_l      === 1'b1) &&
+        (sampled_transaction.valid_in   === 1'b1) &&
+        (sampled_transaction.csr_ren_in === 1'b0) &&
+        (sampled_transaction.ap         === legal_ap)
+    );
+  endfunction : is_legal_binv_sample
+
   // COVERGROUPS
   covergroup sanity_flow_cg;
     //track each individual instance instead of global pooling
@@ -295,6 +313,23 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     ror_amount_pattern_cross: cross ror_rotate_amount_cp, ror_operand_pattern_cp;
   endgroup : ror_cg
 
+  covergroup binv_cg;
+    option.per_instance = 1;
+
+    binv_index_class_cp: coverpoint sampled_transaction.b_in[4:0] iff (is_legal_binv_sample()) {
+      bins zero = {5'd0}; bins interior = {[5'd1 : 5'd30]}; bins maximum = {5'd31};
+    }
+
+    binv_selected_bit_cp:
+        coverpoint sampled_transaction.a_in[
+            sampled_transaction.b_in[4:0]
+        ] iff (is_legal_binv_sample()) {
+      bins selected_bit_clear = {1'b0}; bins selected_bit_set = {1'b1};
+    }
+
+    binv_index_selected_bit_cross: cross binv_index_class_cp, binv_selected_bit_cp;
+  endgroup : binv_cg
+
   function new(string name = "bmu_coverage_subscriber", uvm_component parent = null);
     super.new(name, parent);
 
@@ -308,6 +343,7 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     srl_cg              = new();
     sra_cg              = new();
     ror_cg              = new();
+    binv_cg             = new();
   endfunction : new
 
   virtual function void write(bmu_sequence_item t);
@@ -337,6 +373,7 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     srl_cg.sample();
     sra_cg.sample();
     ror_cg.sample();
+    binv_cg.sample();
 
     `uvm_info(
         "COVERAGE_SAMPLE", $sformatf(
@@ -362,7 +399,7 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
                 "csr_read_coverage=%0.2f%% csr_write_coverage=%0.2f%% ",
                 "or_orn_coverage=%0.2f%% xor_xnor_coverage=%0.2f%% ",
                 "srl_coverage=%0.2f%% sra_coverage=%0.2f%% ",
-                "ror_coverage=%0.2f%%"
+                "ror_coverage=%0.2f%% binv_coverage=%0.2f%%"
               },
               sample_count,
               sanity_flow_cg.get_inst_coverage(),
@@ -372,7 +409,8 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
               xor_xnor_cg.get_inst_coverage(),
               srl_cg.get_inst_coverage(),
               sra_cg.get_inst_coverage(),
-              ror_cg.get_inst_coverage()
+              ror_cg.get_inst_coverage(),
+              binv_cg.get_inst_coverage()
               ), UVM_NONE)
   endfunction : report_phase
 
