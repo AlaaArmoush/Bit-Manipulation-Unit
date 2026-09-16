@@ -11,6 +11,7 @@ class bmu_reference_model extends uvm_object;
     rtl_pkg::rtl_alu_pkt_t legal_csr_write_ap;
     rtl_pkg::rtl_alu_pkt_t legal_or_orn_ap;
     rtl_pkg::rtl_alu_pkt_t legal_xor_xnor_ap;
+    rtl_pkg::rtl_alu_pkt_t legal_srl_ap;
 
     prediction          = null;
     predicted_operation = BMU_OP_UNKNOWN;
@@ -165,6 +166,37 @@ class bmu_reference_model extends uvm_object;
 
       return 1'b1;
     end
+
+    // Shift Right Logical
+    if (request.ap.srl === 1'b1) begin
+      prediction = bmu_sequence_item::type_id::create("srl_prediction");
+
+      if (prediction == null) begin
+        `uvm_fatal("NO_PREDICTION", "Failed to create the SRL prediction")
+        return 1'b0;
+      end
+
+      prediction.copy(request);
+
+      legal_srl_ap     = '0;
+      legal_srl_ap.srl = 1'b1;
+
+      if ((request.csr_ren_in === 1'b0) && (request.ap === legal_srl_ap)) begin
+        // SRL-01, SRL-02, SRL-04, SRL-05, and SRL-06:
+        // only b_in[4:0] selects the logical shift amount.
+        prediction.result_ff = $unsigned(request.a_in) >> request.b_in[4:0];
+        prediction.error     = 1'b0;
+        predicted_operation  = BMU_OP_SRL;
+      end else begin
+        // SRL-03: accepted SRL request with conflicting controls.
+        prediction.result_ff = 32'h0000_0000;
+        prediction.error     = 1'b1;
+        predicted_operation  = BMU_OP_INVALID_CONTROL;
+      end
+
+      return 1'b1;
+    end
+
     return 1'b0;  // Request not supported.
   endfunction : predict
 
