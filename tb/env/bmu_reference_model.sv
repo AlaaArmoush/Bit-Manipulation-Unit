@@ -13,6 +13,7 @@ class bmu_reference_model extends uvm_object;
     rtl_pkg::rtl_alu_pkt_t legal_xor_xnor_ap;
     rtl_pkg::rtl_alu_pkt_t legal_srl_ap;
     rtl_pkg::rtl_alu_pkt_t legal_sra_ap;
+    rtl_pkg::rtl_alu_pkt_t legal_ror_ap;
 
     prediction          = null;
     predicted_operation = BMU_OP_UNKNOWN;
@@ -220,6 +221,38 @@ class bmu_reference_model extends uvm_object;
         predicted_operation  = BMU_OP_SRA;
       end else begin
         // SRA-03: accepted SRA request with conflicting controls.
+        prediction.result_ff = 32'h0000_0000;
+        prediction.error     = 1'b1;
+        predicted_operation  = BMU_OP_INVALID_CONTROL;
+      end
+
+      return 1'b1;
+    end
+
+    // Rotate Right
+    if (request.ap.ror === 1'b1) begin
+      prediction = bmu_sequence_item::type_id::create("ror_prediction");
+
+      if (prediction == null) begin
+        `uvm_fatal("NO_PREDICTION", "Failed to create the ROR prediction")
+        return 1'b0;
+      end
+
+      prediction.copy(request);
+
+      legal_ror_ap     = '0;
+      legal_ror_ap.ror = 1'b1;
+
+      if ((request.csr_ren_in === 1'b0) && (request.ap === legal_ror_ap)) begin
+        // ROR-01, ROR-02, ROR-04, ROR-05, and ROR-06:
+        // duplicate the 32-bit operand, shift the 64-bit value right by
+        // b_in[4:0], and retain the low 32 bits.
+        prediction.result_ff = {$unsigned(request.a_in), $unsigned(request.a_in)} >>
+            request.b_in[4:0];
+        prediction.error = 1'b0;
+        predicted_operation = BMU_OP_ROR;
+      end else begin
+        // ROR-03: accepted ROR request with conflicting controls.
         prediction.result_ff = 32'h0000_0000;
         prediction.error     = 1'b1;
         predicted_operation  = BMU_OP_INVALID_CONTROL;
