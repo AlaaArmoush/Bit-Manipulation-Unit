@@ -163,6 +163,24 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     );
   endfunction : is_legal_sh2add_sample
 
+  protected function bit is_legal_sub_sample();
+    rtl_pkg::rtl_alu_pkt_t legal_ap;
+
+    if (sampled_transaction == null) begin
+      return 1'b0;
+    end
+
+    legal_ap     = '0;
+    legal_ap.sub = 1'b1;
+
+    return (
+        (sampled_transaction.rst_l      === 1'b1) &&
+        (sampled_transaction.valid_in   === 1'b1) &&
+        (sampled_transaction.csr_ren_in === 1'b0) &&
+        (sampled_transaction.ap         === legal_ap)
+    );
+  endfunction : is_legal_sub_sample
+
   // COVERGROUPS
   covergroup sanity_flow_cg;
     //track each individual instance instead of global pooling
@@ -387,6 +405,62 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     }
   endgroup : sh2add_cg
 
+  covergroup sub_cg;
+    option.per_instance = 1;
+
+    sub_operand_relationship_cp: coverpoint (($unsigned(
+        sampled_transaction.a_in
+    ) > $unsigned(
+        sampled_transaction.b_in
+    )) ? 2'd2 : ($unsigned(
+        sampled_transaction.a_in
+    ) === $unsigned(
+        sampled_transaction.b_in
+    )) ? 2'd1 : 2'd0) iff (is_legal_sub_sample()) {
+      bins a_less_than_b = {2'd0}; bins a_equal_to_b = {2'd1}; bins a_greater_than_b = {2'd2};
+    }
+
+    sub_boundary_class_cp: coverpoint ((($unsigned(
+        sampled_transaction.a_in
+    ) === 32'h0000_0000) && ($unsigned(
+        sampled_transaction.b_in
+    ) === 32'h0000_0000)) ? 3'd0 : (($unsigned(
+        sampled_transaction.a_in
+    ) === 32'hFFFF_FFFF) && ($unsigned(
+        sampled_transaction.b_in
+    ) === 32'hFFFF_FFFF)) ? 3'd1 : (((($unsigned(
+        sampled_transaction.a_in
+    ) === 32'h0000_0000) && ($unsigned(
+        sampled_transaction.b_in
+    ) === 32'hFFFF_FFFF))) || (($unsigned(
+        sampled_transaction.a_in
+    ) === 32'hFFFF_FFFF) && ($unsigned(
+        sampled_transaction.b_in
+    ) === 32'h0000_0000))) ? 3'd2 : 3'd3) iff (is_legal_sub_sample()) {
+      bins both_zero = {3'd0};
+      bins both_all_one = {3'd1};
+      bins zero_and_all_one = {3'd2};
+      bins non_boundary_pair = {3'd3};
+    }
+
+    sub_control_class_cp:
+        coverpoint (
+            (sampled_transaction.ap.zba === 1'b1) ? 3'd1 :
+            (sampled_transaction.csr_ren_in === 1'b1) ? 3'd2 :
+            is_legal_sub_sample() ? 3'd0 :
+                                    3'd3
+        ) iff ((sampled_transaction.rst_l    === 1'b1) &&
+               (sampled_transaction.valid_in === 1'b1) &&
+               (sampled_transaction.ap.sub   === 1'b1) &&
+               (sampled_transaction.ap.slt   === 1'b0) &&
+               (sampled_transaction.ap.max   === 1'b0)) {
+      bins legal = {3'd0};
+      bins prohibited_zba = {3'd1};
+      bins csr_read_conflict = {3'd2};
+      bins in_scope_control_conflict = {3'd3};
+    }
+  endgroup : sub_cg
+
   function new(string name = "bmu_coverage_subscriber", uvm_component parent = null);
     super.new(name, parent);
 
@@ -402,6 +476,7 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     ror_cg              = new();
     binv_cg             = new();
     sh2add_cg           = new();
+    sub_cg              = new();
   endfunction : new
 
   virtual function void write(bmu_sequence_item t);
@@ -433,6 +508,7 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     ror_cg.sample();
     binv_cg.sample();
     sh2add_cg.sample();
+    sub_cg.sample();
 
     `uvm_info(
         "COVERAGE_SAMPLE", $sformatf(
@@ -459,7 +535,7 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
                 "or_orn_coverage=%0.2f%% xor_xnor_coverage=%0.2f%% ",
                 "srl_coverage=%0.2f%% sra_coverage=%0.2f%% ",
                 "ror_coverage=%0.2f%% binv_coverage=%0.2f%% ",
-                "sh2add_coverage=%0.2f%%"
+                "sh2add_coverage=%0.2f%% sub_coverage=%0.2f%%"
               },
               sample_count,
               sanity_flow_cg.get_inst_coverage(),
@@ -471,7 +547,8 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
               sra_cg.get_inst_coverage(),
               ror_cg.get_inst_coverage(),
               binv_cg.get_inst_coverage(),
-              sh2add_cg.get_inst_coverage()
+              sh2add_cg.get_inst_coverage(),
+              sub_cg.get_inst_coverage()
               ), UVM_NONE)
   endfunction : report_phase
 
