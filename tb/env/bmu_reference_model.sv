@@ -46,6 +46,7 @@ class bmu_reference_model extends uvm_object;
     rtl_pkg::rtl_alu_pkt_t legal_cpop_ap;
     rtl_pkg::rtl_alu_pkt_t legal_sext_b_ap;
     rtl_pkg::rtl_alu_pkt_t legal_max_ap;
+    rtl_pkg::rtl_alu_pkt_t legal_pack_ap;
 
     prediction          = null;
     predicted_operation = BMU_OP_UNKNOWN;
@@ -546,6 +547,39 @@ class bmu_reference_model extends uvm_object;
         predicted_operation = BMU_OP_MAX;
       end else begin
         // MAX-I-01: missing SUB or another accepted control conflict.
+        prediction.result_ff = 32'h0000_0000;
+        prediction.error     = 1'b1;
+        predicted_operation  = BMU_OP_INVALID_CONTROL;
+      end
+
+      return 1'b1;
+    end
+
+    // Pack Lower Halves
+    if (request.ap.pack === 1'b1) begin
+      prediction = bmu_sequence_item::type_id::create("pack_prediction");
+
+      if (prediction == null) begin
+        `uvm_fatal("NO_PREDICTION", "Failed to create the PACK prediction")
+        return 1'b0;
+      end
+
+      prediction.copy(request);
+
+      legal_pack_ap      = '0;
+      legal_pack_ap.pack = 1'b1;
+
+      if ((request.csr_ren_in === 1'b0) && (request.ap === legal_pack_ap)) begin
+        // PACK-01 through PACK-05:
+        // independently concatenate only the selected lower halfwords.
+        prediction.result_ff = {
+          request.b_in[15:0],
+          request.a_in[15:0]
+        };
+        prediction.error    = 1'b0;
+        predicted_operation = BMU_OP_PACK;
+      end else begin
+        // PACK-I-01: accepted PACK request with conflicting controls.
         prediction.result_ff = 32'h0000_0000;
         prediction.error     = 1'b1;
         predicted_operation  = BMU_OP_INVALID_CONTROL;
