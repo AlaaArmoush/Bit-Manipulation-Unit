@@ -45,6 +45,7 @@ class bmu_reference_model extends uvm_object;
     rtl_pkg::rtl_alu_pkt_t legal_ctz_ap;
     rtl_pkg::rtl_alu_pkt_t legal_cpop_ap;
     rtl_pkg::rtl_alu_pkt_t legal_sext_b_ap;
+    rtl_pkg::rtl_alu_pkt_t legal_max_ap;
 
     prediction          = null;
     predicted_operation = BMU_OP_UNKNOWN;
@@ -508,6 +509,43 @@ class bmu_reference_model extends uvm_object;
         predicted_operation  = BMU_OP_SEXT_B;
       end else begin
         // SEXB-I-01: accepted SEXT.B request with conflicting controls.
+        prediction.result_ff = 32'h0000_0000;
+        prediction.error     = 1'b1;
+        predicted_operation  = BMU_OP_INVALID_CONTROL;
+      end
+
+      return 1'b1;
+    end
+
+    // Signed Maximum
+    if (request.ap.max === 1'b1) begin
+      prediction = bmu_sequence_item::type_id::create("max_prediction");
+
+      if (prediction == null) begin
+        `uvm_fatal("NO_PREDICTION", "Failed to create the signed MAX prediction")
+        return 1'b0;
+      end
+
+      prediction.copy(request);
+
+      legal_max_ap     = '0;
+      legal_max_ap.max = 1'b1;
+      legal_max_ap.sub = 1'b1;
+
+      if ((request.csr_ren_in === 1'b0) && (request.ap === legal_max_ap)) begin
+        // MAX-01 through MAX-06:
+        // compare both operands as signed 32-bit integers and return
+        // one of the original operand bit patterns.
+        if ($signed(request.a_in) > $signed(request.b_in)) begin
+          prediction.result_ff = request.a_in;
+        end else begin
+          prediction.result_ff = request.b_in;
+        end
+
+        prediction.error    = 1'b0;
+        predicted_operation = BMU_OP_MAX;
+      end else begin
+        // MAX-I-01: missing SUB or another accepted control conflict.
         prediction.result_ff = 32'h0000_0000;
         prediction.error     = 1'b1;
         predicted_operation  = BMU_OP_INVALID_CONTROL;

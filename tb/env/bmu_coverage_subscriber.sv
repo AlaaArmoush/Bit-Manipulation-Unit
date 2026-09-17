@@ -281,6 +281,25 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     );
   endfunction : is_legal_sext_b_sample
 
+  protected function bit is_legal_max_sample();
+    rtl_pkg::rtl_alu_pkt_t legal_ap;
+
+    if (sampled_transaction == null) begin
+      return 1'b0;
+    end
+
+    legal_ap     = '0;
+    legal_ap.max = 1'b1;
+    legal_ap.sub = 1'b1;
+
+    return (
+        (sampled_transaction.rst_l      === 1'b1) &&
+        (sampled_transaction.valid_in   === 1'b1) &&
+        (sampled_transaction.csr_ren_in === 1'b0) &&
+        (sampled_transaction.ap         === legal_ap)
+    );
+  endfunction : is_legal_max_sample
+
   // COVERGROUPS
   covergroup sanity_flow_cg;
     //track each individual instance instead of global pooling
@@ -735,6 +754,82 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     }
   endgroup : sext_b_cg
 
+  covergroup max_cg;
+    option.per_instance = 1;
+
+    max_signed_relationship_cp: coverpoint (($signed(
+        sampled_transaction.a_in
+    ) < $signed(
+        sampled_transaction.b_in
+    )) ? 2'd0 : ($signed(
+        sampled_transaction.a_in
+    ) === $signed(
+        sampled_transaction.b_in
+    )) ? 2'd1 : 2'd2) iff (is_legal_max_sample()) {
+      bins a_less_than_b = {2'd0}; bins a_equal_to_b = {2'd1}; bins a_greater_than_b = {2'd2};
+    }
+
+    max_operand_sign_pair_cp: coverpoint {
+      sampled_transaction.a_in[31], sampled_transaction.b_in[31]
+    } iff (is_legal_max_sample()) {
+      bins both_nonnegative = {2'b00};
+      bins a_nonnegative_b_negative = {2'b01};
+      bins a_negative_b_nonnegative = {2'b10};
+      bins both_negative = {2'b11};
+    }
+
+    max_boundary_class_cp:
+        coverpoint (
+            ((sampled_transaction.a_in === 32'h8000_0000) &&
+             (sampled_transaction.b_in === 32'h7FFF_FFFF)) ? 2'd1 :
+            ((sampled_transaction.a_in === 32'h7FFF_FFFF) &&
+             (sampled_transaction.b_in === 32'h8000_0000)) ? 2'd2 :
+                                                             2'd0
+        )
+        iff (is_legal_max_sample()) {
+      bins non_boundary = {2'd0}; bins signed_min_to_max = {2'd1}; bins signed_max_to_min = {2'd2};
+    }
+
+    max_relationship_sign_cross: cross max_signed_relationship_cp, max_operand_sign_pair_cp{
+      ignore_bins nonnegative_negative_less_or_equal_impossible =
+          binsof(max_operand_sign_pair_cp.a_nonnegative_b_negative) &&
+          (binsof(max_signed_relationship_cp.a_less_than_b) ||
+           binsof(max_signed_relationship_cp.a_equal_to_b));
+
+      ignore_bins negative_nonnegative_equal_or_greater_impossible =
+          binsof(max_operand_sign_pair_cp.a_negative_b_nonnegative) &&
+          (binsof(max_signed_relationship_cp.a_equal_to_b) ||
+           binsof(max_signed_relationship_cp.a_greater_than_b));
+    }
+
+    max_relationship_boundary_cross: cross max_signed_relationship_cp, max_boundary_class_cp{
+      ignore_bins signed_min_to_max_equal_or_greater_impossible =
+          binsof(max_boundary_class_cp.signed_min_to_max) &&
+          (binsof(max_signed_relationship_cp.a_equal_to_b) ||
+           binsof(max_signed_relationship_cp.a_greater_than_b));
+
+      ignore_bins signed_max_to_min_less_or_equal_impossible =
+          binsof(max_boundary_class_cp.signed_max_to_min) &&
+          (binsof(max_signed_relationship_cp.a_less_than_b) ||
+           binsof(max_signed_relationship_cp.a_equal_to_b));
+    }
+
+    max_invalid_control_cp:
+        coverpoint (
+            (sampled_transaction.csr_ren_in === 1'b1)
+                ? 2'd1
+                : (is_legal_max_sample() ? 2'd0 : 2'd2)
+        )
+        iff ((sampled_transaction.rst_l    === 1'b1) &&
+             (sampled_transaction.valid_in === 1'b1) &&
+             (sampled_transaction.ap.max   === 1'b1)) {
+      bins csr_read_conflict = {2'd1};
+      bins in_scope_control_conflict = {2'd2};
+
+      ignore_bins legal = {2'd0};
+    }
+  endgroup : max_cg
+
   function new(string name = "bmu_coverage_subscriber", uvm_component parent = null);
     super.new(name, parent);
 
@@ -755,6 +850,7 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     ctz_cg              = new();
     cpop_cg             = new();
     sext_b_cg           = new();
+    max_cg              = new();
   endfunction : new
 
   virtual function void write(bmu_sequence_item t);
@@ -791,6 +887,7 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     ctz_cg.sample();
     cpop_cg.sample();
     sext_b_cg.sample();
+    max_cg.sample();
 
     `uvm_info(
         "COVERAGE_SAMPLE", $sformatf(
@@ -819,7 +916,8 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
                 "ror_coverage=%0.2f%% binv_coverage=%0.2f%% ",
                 "sh2add_coverage=%0.2f%% sub_coverage=%0.2f%%",
                 "slt_coverage=%0.2f%% ctz_coverage=%0.2f%%",
-                " cpop_coverage=%0.2f%% sext_b_coverage=%0.2f%%"
+                " cpop_coverage=%0.2f%% sext_b_coverage=%0.2f%% ",
+                "max_coverage=%0.2f%%"
               },
               sample_count,
               sanity_flow_cg.get_inst_coverage(),
@@ -836,7 +934,8 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
               slt_cg.get_inst_coverage(),
               ctz_cg.get_inst_coverage(),
               cpop_cg.get_inst_coverage(),
-              sext_b_cg.get_inst_coverage()
+              sext_b_cg.get_inst_coverage(),
+              max_cg.get_inst_coverage()
               ), UVM_NONE)
   endfunction : report_phase
 
