@@ -27,7 +27,8 @@ package bmu_pkg;
     BMU_OP_CTZ,
     BMU_OP_CPOP,
     BMU_OP_SEXT_B,
-    BMU_OP_MAX
+    BMU_OP_MAX,
+    BMU_OP_PACK
   } bmu_operation_e;
 
   // Transaction and sequencer
@@ -53,6 +54,7 @@ package bmu_pkg;
 
   // Zbp sequences
   `include "sequences/zbp/bmu_ror_sequence.sv"
+  `include "sequences/zbp/bmu_pack_sequence.sv"
 
   // Zbs sequences
   `include "sequences/zbs/bmu_binv_sequence.sv"
@@ -95,6 +97,7 @@ package bmu_pkg;
 
   // Zbp tests
   `include "tests/zbp/bmu_ror_test.sv"
+  `include "tests/zbp/bmu_pack_test.sv"
 
   // Zbs tests
   `include "tests/zbs/bmu_binv_test.sv"

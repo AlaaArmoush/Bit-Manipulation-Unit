@@ -300,6 +300,24 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     );
   endfunction : is_legal_max_sample
 
+  protected function bit is_legal_pack_sample();
+    rtl_pkg::rtl_alu_pkt_t legal_ap;
+
+    if (sampled_transaction == null) begin
+      return 1'b0;
+    end
+
+    legal_ap      = '0;
+    legal_ap.pack = 1'b1;
+
+    return (
+        (sampled_transaction.rst_l      === 1'b1) &&
+        (sampled_transaction.valid_in   === 1'b1) &&
+        (sampled_transaction.csr_ren_in === 1'b0) &&
+        (sampled_transaction.ap         === legal_ap)
+    );
+  endfunction : is_legal_pack_sample
+
   // COVERGROUPS
   covergroup sanity_flow_cg;
     //track each individual instance instead of global pooling
@@ -830,6 +848,65 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     }
   endgroup : max_cg
 
+  covergroup pack_cg;
+    option.per_instance = 1;
+
+    pack_selected_half_pattern_cp:
+        coverpoint (
+            ((sampled_transaction.a_in[15:0] === 16'h0000) &&
+             (sampled_transaction.b_in[15:0] === 16'h0000)) ? 2'd0 :
+            ((sampled_transaction.a_in[15:0] === 16'hFFFF) &&
+             (sampled_transaction.b_in[15:0] === 16'hFFFF)) ? 2'd1 :
+            (sampled_transaction.a_in[15:0] !==
+             sampled_transaction.b_in[15:0])                ? 2'd2 :
+                                                               2'd3
+        )
+        iff (is_legal_pack_sample()) {
+      bins both_selected_halves_zero = {2'd0};
+      bins both_selected_halves_one = {2'd1};
+      bins different_selected_halves = {2'd2};
+
+      ignore_bins equal_non_boundary_halves = {2'd3};
+    }
+
+    pack_a_upper_invariance_cp:
+        coverpoint sampled_transaction.a_in[31:16]
+        iff (is_legal_pack_sample() &&
+             (sampled_transaction.a_in[15:0] === 16'hA55A) &&
+             (sampled_transaction.b_in       === 32'h1357_2468)) {
+      bins upper_zero = {16'h0000};
+      bins upper_one = {16'hFFFF};
+
+      ignore_bins other_upper_value = {[16'h0001 : 16'hFFFE]};
+    }
+
+    pack_b_upper_invariance_cp:
+        coverpoint sampled_transaction.b_in[31:16]
+        iff (is_legal_pack_sample() &&
+             (sampled_transaction.a_in       === 32'h89AB_1357) &&
+             (sampled_transaction.b_in[15:0] === 16'h5AA5)) {
+      bins upper_zero = {16'h0000};
+      bins upper_one = {16'hFFFF};
+
+      ignore_bins other_upper_value = {[16'h0001 : 16'hFFFE]};
+    }
+
+    pack_invalid_control_cp:
+        coverpoint (
+            (sampled_transaction.csr_ren_in === 1'b1)
+                ? 2'd1
+                : (is_legal_pack_sample() ? 2'd0 : 2'd2)
+        )
+        iff ((sampled_transaction.rst_l    === 1'b1) &&
+             (sampled_transaction.valid_in === 1'b1) &&
+             (sampled_transaction.ap.pack  === 1'b1)) {
+      bins csr_read_conflict = {2'd1};
+      bins in_scope_control_conflict = {2'd2};
+
+      ignore_bins legal = {2'd0};
+    }
+  endgroup : pack_cg
+
   function new(string name = "bmu_coverage_subscriber", uvm_component parent = null);
     super.new(name, parent);
 
@@ -851,6 +928,7 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     cpop_cg             = new();
     sext_b_cg           = new();
     max_cg              = new();
+    pack_cg             = new();
   endfunction : new
 
   virtual function void write(bmu_sequence_item t);
@@ -888,6 +966,7 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     cpop_cg.sample();
     sext_b_cg.sample();
     max_cg.sample();
+    pack_cg.sample();
 
     `uvm_info(
         "COVERAGE_SAMPLE", $sformatf(
@@ -917,7 +996,7 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
                 "sh2add_coverage=%0.2f%% sub_coverage=%0.2f%%",
                 "slt_coverage=%0.2f%% ctz_coverage=%0.2f%%",
                 " cpop_coverage=%0.2f%% sext_b_coverage=%0.2f%% ",
-                "max_coverage=%0.2f%%"
+                "max_coverage=%0.2f%% pack_coverage=%0.2f%%"
               },
               sample_count,
               sanity_flow_cg.get_inst_coverage(),
@@ -935,7 +1014,8 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
               ctz_cg.get_inst_coverage(),
               cpop_cg.get_inst_coverage(),
               sext_b_cg.get_inst_coverage(),
-              max_cg.get_inst_coverage()
+              max_cg.get_inst_coverage(),
+              pack_cg.get_inst_coverage()
               ), UVM_NONE)
   endfunction : report_phase
 
