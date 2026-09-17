@@ -26,7 +26,8 @@ package bmu_pkg;
     BMU_OP_SLTU,
     BMU_OP_CTZ,
     BMU_OP_CPOP,
-    BMU_OP_SEXT_B
+    BMU_OP_SEXT_B,
+    BMU_OP_MAX
   } bmu_operation_e;
 
   // Transaction and sequencer
@@ -62,6 +63,7 @@ package bmu_pkg;
   `include "sequences/zbb/bmu_ctz_sequence.sv"
   `include "sequences/zbb/bmu_cpop_sequence.sv"
   `include "sequences/zbb/bmu_sext_b_sequence.sv"
+  `include "sequences/zbb/bmu_max_sequence.sv"
 
   // Agent components
   `include "agent/bmu_driver.sv"
@@ -103,5 +105,6 @@ package bmu_pkg;
   `include "tests/zbb/bmu_ctz_test.sv"
   `include "tests/zbb/bmu_cpop_test.sv"
   `include "tests/zbb/bmu_sext_b_test.sv"
+  `include "tests/zbb/bmu_max_test.sv"
 
 endpackage : bmu_pkg
