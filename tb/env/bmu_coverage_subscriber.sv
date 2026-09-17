@@ -203,6 +203,34 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     );
   endfunction : is_legal_slt_sample
 
+  protected function bit is_legal_ctz_sample();
+    rtl_pkg::rtl_alu_pkt_t legal_ap;
+
+    if (sampled_transaction == null) begin
+      return 1'b0;
+    end
+
+    legal_ap     = '0;
+    legal_ap.ctz = 1'b1;
+
+    return (
+        (sampled_transaction.rst_l      === 1'b1) &&
+        (sampled_transaction.valid_in   === 1'b1) &&
+        (sampled_transaction.csr_ren_in === 1'b0) &&
+        (sampled_transaction.ap         === legal_ap)
+    );
+  endfunction : is_legal_ctz_sample
+
+  protected function automatic logic [31:0] count_trailing_zeros(logic [31:0] operand);
+    for (int unsigned bit_index = 0; bit_index < 32; bit_index++) begin
+      if (operand[bit_index] === 1'b1) begin
+        return bit_index;
+      end
+    end
+
+    return 32;
+  endfunction : count_trailing_zeros
+
   // COVERGROUPS
   covergroup sanity_flow_cg;
     //track each individual instance instead of global pooling
@@ -560,6 +588,33 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     }
   endgroup : slt_cg
 
+  covergroup ctz_cg;
+    option.per_instance = 1;
+
+    ctz_count_cp: coverpoint count_trailing_zeros(
+        sampled_transaction.a_in
+    ) iff (is_legal_ctz_sample()) {
+      bins zero = {32'd0};
+      bins one = {32'd1};
+      bins interior = {[32'd2 : 32'd30]};
+      bins thirty_one = {32'd31};
+      bins thirty_two = {32'd32};
+    }
+
+    ctz_invalid_control_cp:
+        coverpoint (
+            (sampled_transaction.csr_ren_in === 1'b1)
+                ? 2'd1
+                : (is_legal_ctz_sample() ? 2'd0 : 2'd2)
+        ) iff ((sampled_transaction.rst_l    === 1'b1) &&
+               (sampled_transaction.valid_in === 1'b1) &&
+               (sampled_transaction.ap.ctz   === 1'b1)) {
+      bins csr_read_conflict = {2'd1};
+      bins in_scope_control_conflict = {2'd2};
+      ignore_bins legal = {2'd0};
+    }
+  endgroup : ctz_cg
+
   function new(string name = "bmu_coverage_subscriber", uvm_component parent = null);
     super.new(name, parent);
 
@@ -577,6 +632,7 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     sh2add_cg           = new();
     sub_cg              = new();
     slt_cg              = new();
+    ctz_cg              = new();
   endfunction : new
 
   virtual function void write(bmu_sequence_item t);
@@ -610,6 +666,7 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     sh2add_cg.sample();
     sub_cg.sample();
     slt_cg.sample();
+    ctz_cg.sample();
 
     `uvm_info(
         "COVERAGE_SAMPLE", $sformatf(
@@ -637,7 +694,7 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
                 "srl_coverage=%0.2f%% sra_coverage=%0.2f%% ",
                 "ror_coverage=%0.2f%% binv_coverage=%0.2f%% ",
                 "sh2add_coverage=%0.2f%% sub_coverage=%0.2f%%",
-                "slt_coverage=%0.2f%%"
+                "slt_coverage=%0.2f%% ctz_coverage=%0.2f%%"
               },
               sample_count,
               sanity_flow_cg.get_inst_coverage(),
@@ -651,7 +708,8 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
               binv_cg.get_inst_coverage(),
               sh2add_cg.get_inst_coverage(),
               sub_cg.get_inst_coverage(),
-              slt_cg.get_inst_coverage()
+              slt_cg.get_inst_coverage(),
+              ctz_cg.get_inst_coverage()
               ), UVM_NONE)
   endfunction : report_phase
 
