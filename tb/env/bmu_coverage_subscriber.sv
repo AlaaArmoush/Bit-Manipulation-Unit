@@ -181,6 +181,28 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     );
   endfunction : is_legal_sub_sample
 
+  protected function bit is_legal_slt_sample();
+    rtl_pkg::rtl_alu_pkt_t legal_ap;
+
+    if (sampled_transaction == null) begin
+      return 1'b0;
+    end
+
+    legal_ap        = '0;
+    legal_ap.slt    = 1'b1;
+    legal_ap.sub    = 1'b1;
+    legal_ap.unsign = sampled_transaction.ap.unsign;
+
+    return (
+        (sampled_transaction.rst_l      === 1'b1) &&
+        (sampled_transaction.valid_in   === 1'b1) &&
+        (sampled_transaction.csr_ren_in === 1'b0) &&
+        ((sampled_transaction.ap.unsign === 1'b0) ||
+         (sampled_transaction.ap.unsign === 1'b1)) &&
+        (sampled_transaction.ap         === legal_ap)
+    );
+  endfunction : is_legal_slt_sample
+
   // COVERGROUPS
   covergroup sanity_flow_cg;
     //track each individual instance instead of global pooling
@@ -461,6 +483,83 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     }
   endgroup : sub_cg
 
+  covergroup slt_cg;
+    option.per_instance = 1;
+
+    slt_mode_cp: coverpoint sampled_transaction.ap.unsign iff (is_legal_slt_sample()) {
+      bins signed_mode = {1'b0}; bins unsigned_mode = {1'b1};
+    }
+
+    slt_operand_sign_pair_cp: coverpoint {
+      sampled_transaction.a_in[31], sampled_transaction.b_in[31]
+    } iff (is_legal_slt_sample()) {
+      bins both_nonnegative = {2'b00};
+      bins a_nonnegative_b_negative = {2'b01};
+      bins a_negative_b_nonnegative = {2'b10};
+      bins both_negative = {2'b11};
+    }
+
+    slt_relationship_cp: coverpoint ((sampled_transaction.ap.unsign === 1'b1) ? (($unsigned(
+        sampled_transaction.a_in
+    ) < $unsigned(
+        sampled_transaction.b_in
+    )) ? 2'd0 : (($unsigned(
+        sampled_transaction.a_in
+    ) === $unsigned(
+        sampled_transaction.b_in
+    )) ? 2'd1 : 2'd2)) : (($signed(
+        sampled_transaction.a_in
+    ) < $signed(
+        sampled_transaction.b_in
+    )) ? 2'd0 : (($signed(
+        sampled_transaction.a_in
+    ) === $signed(
+        sampled_transaction.b_in
+    )) ? 2'd1 : 2'd2))) iff (is_legal_slt_sample()) {
+      bins a_less_than_b = {2'd0}; bins a_equal_to_b = {2'd1}; bins a_greater_than_b = {2'd2};
+    }
+
+    slt_mode_sign_relationship_cross:
+        cross slt_mode_cp,
+              slt_operand_sign_pair_cp,
+              slt_relationship_cp {
+      ignore_bins signed_a_nonnegative_b_negative_impossible =
+          binsof(slt_mode_cp.signed_mode) &&
+          binsof(slt_operand_sign_pair_cp.a_nonnegative_b_negative) &&
+          (binsof(slt_relationship_cp.a_less_than_b) ||
+           binsof(slt_relationship_cp.a_equal_to_b));
+
+      ignore_bins signed_a_negative_b_nonnegative_impossible =
+          binsof(slt_mode_cp.signed_mode) &&
+          binsof(slt_operand_sign_pair_cp.a_negative_b_nonnegative) &&
+          (binsof(slt_relationship_cp.a_equal_to_b) ||
+           binsof(slt_relationship_cp.a_greater_than_b));
+
+      ignore_bins unsigned_a_nonnegative_b_negative_impossible =
+          binsof(slt_mode_cp.unsigned_mode) &&
+          binsof(slt_operand_sign_pair_cp.a_nonnegative_b_negative) &&
+          (binsof(slt_relationship_cp.a_equal_to_b) ||
+           binsof(slt_relationship_cp.a_greater_than_b));
+
+      ignore_bins unsigned_a_negative_b_nonnegative_impossible =
+          binsof(slt_mode_cp.unsigned_mode) &&
+          binsof(slt_operand_sign_pair_cp.a_negative_b_nonnegative) &&
+          (binsof(slt_relationship_cp.a_less_than_b) ||
+           binsof(slt_relationship_cp.a_equal_to_b));
+    }
+
+    slt_control_class_cp:
+        coverpoint (
+          (sampled_transaction.csr_ren_in === 1'b1)
+              ? 2'd1
+              : (is_legal_slt_sample() ? 2'd0 : 2'd2)
+        ) iff ((sampled_transaction.rst_l    === 1'b1) &&
+               (sampled_transaction.valid_in === 1'b1) &&
+               (sampled_transaction.ap.slt   === 1'b1)) {
+      bins legal = {2'd0}; bins csr_read_conflict = {2'd1}; bins in_scope_control_conflict = {2'd2};
+    }
+  endgroup : slt_cg
+
   function new(string name = "bmu_coverage_subscriber", uvm_component parent = null);
     super.new(name, parent);
 
@@ -477,6 +576,7 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     binv_cg             = new();
     sh2add_cg           = new();
     sub_cg              = new();
+    slt_cg              = new();
   endfunction : new
 
   virtual function void write(bmu_sequence_item t);
@@ -509,6 +609,7 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     binv_cg.sample();
     sh2add_cg.sample();
     sub_cg.sample();
+    slt_cg.sample();
 
     `uvm_info(
         "COVERAGE_SAMPLE", $sformatf(
@@ -535,7 +636,8 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
                 "or_orn_coverage=%0.2f%% xor_xnor_coverage=%0.2f%% ",
                 "srl_coverage=%0.2f%% sra_coverage=%0.2f%% ",
                 "ror_coverage=%0.2f%% binv_coverage=%0.2f%% ",
-                "sh2add_coverage=%0.2f%% sub_coverage=%0.2f%%"
+                "sh2add_coverage=%0.2f%% sub_coverage=%0.2f%%",
+                "slt_coverage=%0.2f%%"
               },
               sample_count,
               sanity_flow_cg.get_inst_coverage(),
@@ -548,7 +650,8 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
               ror_cg.get_inst_coverage(),
               binv_cg.get_inst_coverage(),
               sh2add_cg.get_inst_coverage(),
-              sub_cg.get_inst_coverage()
+              sub_cg.get_inst_coverage(),
+              slt_cg.get_inst_coverage()
               ), UVM_NONE)
   endfunction : report_phase
 
