@@ -263,6 +263,24 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     );
   endfunction : is_legal_cpop_sample
 
+  protected function bit is_legal_sext_b_sample();
+    rtl_pkg::rtl_alu_pkt_t legal_ap;
+
+    if (sampled_transaction == null) begin
+      return 1'b0;
+    end
+
+    legal_ap         = '0;
+    legal_ap.siext_b = 1'b1;
+
+    return (
+        (sampled_transaction.rst_l        === 1'b1) &&
+        (sampled_transaction.valid_in     === 1'b1) &&
+        (sampled_transaction.csr_ren_in   === 1'b0) &&
+        (sampled_transaction.ap           === legal_ap)
+    );
+  endfunction : is_legal_sext_b_sample
+
   // COVERGROUPS
   covergroup sanity_flow_cg;
     //track each individual instance instead of global pooling
@@ -673,6 +691,50 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     }
   endgroup : cpop_cg
 
+  covergroup sext_b_cg;
+    option.per_instance = 1;
+
+    sext_b_low_byte_sign_cp: coverpoint sampled_transaction.a_in[7] iff (is_legal_sext_b_sample()) {
+      bins sign_clear = {1'b0}; bins sign_set = {1'b1};
+    }
+
+    sext_b_low_byte_data_class_cp:
+        coverpoint (
+            ((sampled_transaction.a_in[7:0] === 8'h7F) ||
+             (sampled_transaction.a_in[7:0] === 8'h80))
+        )
+        iff (is_legal_sext_b_sample()) {
+      bins random_interior = {1'b0}; bins sign_boundary = {1'b1};
+    }
+
+    sext_b_sign_data_class_cross: cross sext_b_low_byte_sign_cp, sext_b_low_byte_data_class_cp;
+
+    sext_b_upper_a_invariance_cp:
+        coverpoint (
+            (sampled_transaction.a_in[31:8] === 24'h000000) ? 2'd0 :
+            (sampled_transaction.a_in[31:8] === 24'hFFFFFF) ? 2'd1 :
+                                                              2'd2
+        )
+        iff (is_legal_sext_b_sample() &&
+             (sampled_transaction.a_in[7:0] === 8'hA5)) {
+      bins upper_zero = {2'd0}; bins upper_one = {2'd1}; ignore_bins other_upper_value = {2'd2};
+    }
+
+    sext_b_invalid_control_cp:
+        coverpoint (
+            (sampled_transaction.csr_ren_in === 1'b1)
+                ? 2'd1
+                : (is_legal_sext_b_sample() ? 2'd0 : 2'd2)
+        )
+        iff ((sampled_transaction.rst_l       === 1'b1) &&
+             (sampled_transaction.valid_in    === 1'b1) &&
+             (sampled_transaction.ap.siext_b  === 1'b1)) {
+      bins csr_read_conflict = {2'd1};
+      bins in_scope_control_conflict = {2'd2};
+      ignore_bins legal = {2'd0};
+    }
+  endgroup : sext_b_cg
+
   function new(string name = "bmu_coverage_subscriber", uvm_component parent = null);
     super.new(name, parent);
 
@@ -692,6 +754,7 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     slt_cg              = new();
     ctz_cg              = new();
     cpop_cg             = new();
+    sext_b_cg           = new();
   endfunction : new
 
   virtual function void write(bmu_sequence_item t);
@@ -727,6 +790,7 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     slt_cg.sample();
     ctz_cg.sample();
     cpop_cg.sample();
+    sext_b_cg.sample();
 
     `uvm_info(
         "COVERAGE_SAMPLE", $sformatf(
@@ -755,7 +819,7 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
                 "ror_coverage=%0.2f%% binv_coverage=%0.2f%% ",
                 "sh2add_coverage=%0.2f%% sub_coverage=%0.2f%%",
                 "slt_coverage=%0.2f%% ctz_coverage=%0.2f%%",
-                " cpop_coverage=%0.2f%%"
+                " cpop_coverage=%0.2f%% sext_b_coverage=%0.2f%%"
               },
               sample_count,
               sanity_flow_cg.get_inst_coverage(),
@@ -771,7 +835,8 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
               sub_cg.get_inst_coverage(),
               slt_cg.get_inst_coverage(),
               ctz_cg.get_inst_coverage(),
-              cpop_cg.get_inst_coverage()
+              cpop_cg.get_inst_coverage(),
+              sext_b_cg.get_inst_coverage()
               ), UVM_NONE)
   endfunction : report_phase
 

@@ -44,6 +44,7 @@ class bmu_reference_model extends uvm_object;
     rtl_pkg::rtl_alu_pkt_t legal_slt_ap;
     rtl_pkg::rtl_alu_pkt_t legal_ctz_ap;
     rtl_pkg::rtl_alu_pkt_t legal_cpop_ap;
+    rtl_pkg::rtl_alu_pkt_t legal_sext_b_ap;
 
     prediction          = null;
     predicted_operation = BMU_OP_UNKNOWN;
@@ -477,6 +478,36 @@ class bmu_reference_model extends uvm_object;
         predicted_operation  = BMU_OP_CPOP;
       end else begin
         // CPOP-I-01: accepted CPOP request with conflicting controls.
+        prediction.result_ff = 32'h0000_0000;
+        prediction.error     = 1'b1;
+        predicted_operation  = BMU_OP_INVALID_CONTROL;
+      end
+
+      return 1'b1;
+    end
+
+    // Sign Extend Byte
+    if (request.ap.siext_b === 1'b1) begin
+      prediction = bmu_sequence_item::type_id::create("sext_b_prediction");
+
+      if (prediction == null) begin
+        `uvm_fatal("NO_PREDICTION", "Failed to create the SEXT.B prediction")
+        return 1'b0;
+      end
+
+      prediction.copy(request);
+
+      legal_sext_b_ap         = '0;
+      legal_sext_b_ap.siext_b = 1'b1;
+
+      if ((request.csr_ren_in === 1'b0) && (request.ap === legal_sext_b_ap)) begin
+        // SEXB-01 through SEXB-04:
+        // derive the result only from the low byte and replicate its sign bit.
+        prediction.result_ff = {{24{request.a_in[7]}}, request.a_in[7:0]};
+        prediction.error     = 1'b0;
+        predicted_operation  = BMU_OP_SEXT_B;
+      end else begin
+        // SEXB-I-01: accepted SEXT.B request with conflicting controls.
         prediction.result_ff = 32'h0000_0000;
         prediction.error     = 1'b1;
         predicted_operation  = BMU_OP_INVALID_CONTROL;
