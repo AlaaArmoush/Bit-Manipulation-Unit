@@ -877,7 +877,7 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
       bins upper_zero = {16'h0000};
       bins upper_one = {16'hFFFF};
 
-      ignore_bins other_upper_value = default;
+      ignore_bins other_upper_value = {[16'h0001 : 16'hFFFE]};
     }
 
     pack_b_upper_invariance_cp:
