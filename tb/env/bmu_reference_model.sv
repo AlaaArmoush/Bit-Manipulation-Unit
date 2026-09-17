@@ -15,6 +15,20 @@ class bmu_reference_model extends uvm_object;
     return 32;
   endfunction : count_trailing_zeros
 
+  protected function automatic logic [31:0] population_count(logic [31:0] operand);
+    logic [31:0] count;
+
+    count = '0;
+
+    for (int unsigned bit_index = 0; bit_index < 32; bit_index++) begin
+      if (operand[bit_index] === 1'b1) begin
+        count++;
+      end
+    end
+
+    return count;
+  endfunction : population_count
+
   virtual function bit predict(const ref bmu_sequence_item request,
                                output bmu_sequence_item prediction,
                                output bmu_operation_e predicted_operation);
@@ -29,6 +43,7 @@ class bmu_reference_model extends uvm_object;
     rtl_pkg::rtl_alu_pkt_t legal_sub_ap;
     rtl_pkg::rtl_alu_pkt_t legal_slt_ap;
     rtl_pkg::rtl_alu_pkt_t legal_ctz_ap;
+    rtl_pkg::rtl_alu_pkt_t legal_cpop_ap;
 
     prediction          = null;
     predicted_operation = BMU_OP_UNKNOWN;
@@ -432,6 +447,36 @@ class bmu_reference_model extends uvm_object;
         predicted_operation  = BMU_OP_CTZ;
       end else begin
         // CTZ-I-01: accepted CTZ request with conflicting controls.
+        prediction.result_ff = 32'h0000_0000;
+        prediction.error     = 1'b1;
+        predicted_operation  = BMU_OP_INVALID_CONTROL;
+      end
+
+      return 1'b1;
+    end
+
+    // Population Count
+    if (request.ap.cpop === 1'b1) begin
+      prediction = bmu_sequence_item::type_id::create("cpop_prediction");
+
+      if (prediction == null) begin
+        `uvm_fatal("NO_PREDICTION", "Failed to create the CPOP prediction")
+        return 1'b0;
+      end
+
+      prediction.copy(request);
+
+      legal_cpop_ap      = '0;
+      legal_cpop_ap.cpop = 1'b1;
+
+      if ((request.csr_ren_in === 1'b0) && (request.ap === legal_cpop_ap)) begin
+        // CPOP-01 through CPOP-06:
+        // independently count every set bit across A[31:0].
+        prediction.result_ff = population_count(request.a_in);
+        prediction.error     = 1'b0;
+        predicted_operation  = BMU_OP_CPOP;
+      end else begin
+        // CPOP-I-01: accepted CPOP request with conflicting controls.
         prediction.result_ff = 32'h0000_0000;
         prediction.error     = 1'b1;
         predicted_operation  = BMU_OP_INVALID_CONTROL;
