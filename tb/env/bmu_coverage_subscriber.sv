@@ -318,6 +318,24 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     );
   endfunction : is_legal_pack_sample
 
+  protected function bit is_grev_mode_sample();
+    rtl_pkg::rtl_alu_pkt_t legal_ap;
+
+    if (sampled_transaction == null) begin
+      return 1'b0;
+    end
+
+    legal_ap      = '0;
+    legal_ap.grev = 1'b1;
+
+    return (
+        (sampled_transaction.rst_l      === 1'b1) &&
+        (sampled_transaction.valid_in   === 1'b1) &&
+        (sampled_transaction.csr_ren_in === 1'b0) &&
+        (sampled_transaction.ap         === legal_ap)
+    );
+  endfunction : is_grev_mode_sample
+
   // COVERGROUPS
   covergroup sanity_flow_cg;
     //track each individual instance instead of global pooling
@@ -907,6 +925,41 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     }
   endgroup : pack_cg
 
+  covergroup grev_cg;
+    option.per_instance = 1;
+
+    grev_mode_cp: coverpoint (sampled_transaction.b_in[4:0] === 5'd24) iff (is_grev_mode_sample()) {
+      bins mode_24 = {1'b1}; bins invalid_mode = {1'b0};
+    }
+
+    grev_byte_pattern_cp:
+        coverpoint (
+            (sampled_transaction.a_in === 32'h1234_5678) ? 2'd0 :
+            (sampled_transaction.a_in === 32'h55AA_55AA) ? 2'd1 :
+                                                               2'd2
+        )
+        iff (is_grev_mode_sample()) {
+      bins distinct_bytes = {2'd0}; bins alternating_bytes = {2'd1}; bins random_other = {2'd2};
+    }
+
+    grev_mode_pattern_cross: cross grev_mode_cp, grev_byte_pattern_cp;
+
+    grev_invalid_control_cp:
+        coverpoint (
+            (sampled_transaction.csr_ren_in === 1'b1)
+                ? 2'd1
+                : (is_grev_mode_sample() ? 2'd0 : 2'd2)
+        )
+        iff ((sampled_transaction.rst_l    === 1'b1) &&
+             (sampled_transaction.valid_in === 1'b1) &&
+             (sampled_transaction.ap.grev  === 1'b1)) {
+      bins csr_read_conflict = {2'd1};
+      bins in_scope_control_conflict = {2'd2};
+
+      ignore_bins no_control_conflict = {2'd0};
+    }
+  endgroup : grev_cg
+
   function new(string name = "bmu_coverage_subscriber", uvm_component parent = null);
     super.new(name, parent);
 
@@ -929,6 +982,7 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     sext_b_cg           = new();
     max_cg              = new();
     pack_cg             = new();
+    grev_cg             = new();
   endfunction : new
 
   virtual function void write(bmu_sequence_item t);
@@ -967,6 +1021,7 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     sext_b_cg.sample();
     max_cg.sample();
     pack_cg.sample();
+    grev_cg.sample();
 
     `uvm_info(
         "COVERAGE_SAMPLE", $sformatf(
@@ -996,7 +1051,8 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
                 "sh2add_coverage=%0.2f%% sub_coverage=%0.2f%%",
                 "slt_coverage=%0.2f%% ctz_coverage=%0.2f%%",
                 " cpop_coverage=%0.2f%% sext_b_coverage=%0.2f%% ",
-                "max_coverage=%0.2f%% pack_coverage=%0.2f%%"
+                "max_coverage=%0.2f%% pack_coverage=%0.2f%% ",
+                "grev_coverage=%0.2f%%"
               },
               sample_count,
               sanity_flow_cg.get_inst_coverage(),
@@ -1015,7 +1071,8 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
               cpop_cg.get_inst_coverage(),
               sext_b_cg.get_inst_coverage(),
               max_cg.get_inst_coverage(),
-              pack_cg.get_inst_coverage()
+              pack_cg.get_inst_coverage(),
+              grev_cg.get_inst_coverage()
               ), UVM_NONE)
   endfunction : report_phase
 
