@@ -47,6 +47,7 @@ class bmu_reference_model extends uvm_object;
     rtl_pkg::rtl_alu_pkt_t legal_sext_b_ap;
     rtl_pkg::rtl_alu_pkt_t legal_max_ap;
     rtl_pkg::rtl_alu_pkt_t legal_pack_ap;
+    rtl_pkg::rtl_alu_pkt_t legal_grev_ap;
 
     prediction          = null;
     predicted_operation = BMU_OP_UNKNOWN;
@@ -580,6 +581,41 @@ class bmu_reference_model extends uvm_object;
         predicted_operation = BMU_OP_PACK;
       end else begin
         // PACK-I-01: accepted PACK request with conflicting controls.
+        prediction.result_ff = 32'h0000_0000;
+        prediction.error     = 1'b1;
+        predicted_operation  = BMU_OP_INVALID_CONTROL;
+      end
+
+      return 1'b1;
+    end
+
+    // GREV Byte Reverse
+    if (request.ap.grev === 1'b1) begin
+      prediction = bmu_sequence_item::type_id::create("grev_prediction");
+
+      if (prediction == null) begin
+        `uvm_fatal("NO_PREDICTION", "Failed to create the GREV prediction")
+        return 1'b0;
+      end
+
+      prediction.copy(request);
+
+      legal_grev_ap      = '0;
+      legal_grev_ap.grev = 1'b1;
+
+      if ((request.csr_ren_in === 1'b0) &&
+          (request.ap === legal_grev_ap) &&
+          (request.b_in[4:0] === 5'd24)) begin
+        // GREV-01 through GREV-04:
+        // reverse the four byte positions independently of DUT logic.
+        prediction.result_ff = {
+          request.a_in[7:0], request.a_in[15:8], request.a_in[23:16], request.a_in[31:24]
+        };
+        prediction.error = 1'b0;
+        predicted_operation = BMU_OP_GREV;
+      end else begin
+        // GREV-I-01 and GREV-I-02:
+        // invalid mode, unrelated control, or CSR-read conflict.
         prediction.result_ff = 32'h0000_0000;
         prediction.error     = 1'b1;
         predicted_operation  = BMU_OP_INVALID_CONTROL;
