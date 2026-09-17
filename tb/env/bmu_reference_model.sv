@@ -17,6 +17,7 @@ class bmu_reference_model extends uvm_object;
     rtl_pkg::rtl_alu_pkt_t legal_binv_ap;
     rtl_pkg::rtl_alu_pkt_t legal_sh2add_ap;
     rtl_pkg::rtl_alu_pkt_t legal_sub_ap;
+    rtl_pkg::rtl_alu_pkt_t legal_slt_ap;
 
     prediction          = null;
     predicted_operation = BMU_OP_UNKNOWN;
@@ -349,6 +350,47 @@ class bmu_reference_model extends uvm_object;
       end else begin
         // SUB-I-01 and SUB-I-02: prohibited Zba mode or another
         // conflicting control.
+        prediction.result_ff = 32'h0000_0000;
+        prediction.error     = 1'b1;
+        predicted_operation  = BMU_OP_INVALID_CONTROL;
+      end
+
+      return 1'b1;
+    end
+
+    // Set Less Than
+    if (request.ap.slt === 1'b1) begin
+      prediction = bmu_sequence_item::type_id::create("slt_prediction");
+
+      if (prediction == null) begin
+        `uvm_fatal("NO_PREDICTION", "Failed to create the SLT/SLTU prediction")
+        return 1'b0;
+      end
+
+      prediction.copy(request);
+
+      legal_slt_ap        = '0;
+      legal_slt_ap.slt    = 1'b1;
+      legal_slt_ap.sub    = 1'b1;
+      legal_slt_ap.unsign = request.ap.unsign;
+
+      if ((request.csr_ren_in === 1'b0) &&
+          ((request.ap.unsign === 1'b0) ||
+           (request.ap.unsign === 1'b1)) &&
+          (request.ap === legal_slt_ap)) begin
+        if (request.ap.unsign === 1'b1) begin
+          // SLT-01 through SLT-07 in unsigned SLTU mode.
+          prediction.result_ff = {31'b0, ($unsigned(request.a_in) < $unsigned(request.b_in))};
+          predicted_operation  = BMU_OP_SLTU;
+        end else begin
+          // SLT-01 through SLT-07 in signed SLT mode.
+          prediction.result_ff = {31'b0, ($signed(request.a_in) < $signed(request.b_in))};
+          predicted_operation  = BMU_OP_SLT;
+        end
+
+        prediction.error = 1'b0;
+      end else begin
+        // SLT-I-01: missing required controls or conflicting controls.
         prediction.result_ff = 32'h0000_0000;
         prediction.error     = 1'b1;
         predicted_operation  = BMU_OP_INVALID_CONTROL;
