@@ -6,6 +6,7 @@ class bmu_scoreboard extends uvm_scoreboard;
 
   int unsigned match_count;
   int unsigned mismatch_count;
+  int unsigned reset_observation_count;
 
   function new(string name = "bmu_scoreboard", uvm_component parent = null);
     super.new(name, parent);
@@ -13,6 +14,7 @@ class bmu_scoreboard extends uvm_scoreboard;
     analysis_imp = new("analysis_imp", this);
     match_count = 0;
     mismatch_count = 0;
+    reset_observation_count = 0;
   endfunction : new
 
   virtual function void build_phase(uvm_phase phase);
@@ -45,6 +47,7 @@ class bmu_scoreboard extends uvm_scoreboard;
     observation.copy(monitor_transaction);
 
     if (observation.rst_l === 1'b0) begin
+      reset_observation_count++;
       return;
     end
 
