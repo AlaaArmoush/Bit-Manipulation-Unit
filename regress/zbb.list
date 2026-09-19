@@ -1,0 +1,6 @@
+bmu_or_orn_test
+bmu_xor_xnor_test
+bmu_ctz_test
+bmu_cpop_test
+bmu_sext_b_test
+bmu_max_test
