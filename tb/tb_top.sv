@@ -29,21 +29,46 @@ module tb_top;
     forever #(CLK_PERIOD / 2) clk = ~clk;
   end
 
-  initial begin
+  initial begin : reset_owner
+    //startup reset
     bmu_if.rst_l = 1'b0;
-
     repeat (2) @(posedge clk);
 
     @(negedge clk);
     bmu_if.rst_l = 1'b1;
+
+    // reset request from reset test
+    forever begin
+      @bmu_if.reset_request;
+
+      @(negedge clk);
+      bmu_if.rst_l = 1'b0;
+      repeat (2) @(posedge clk);
+
+      @(negedge clk);
+      bmu_if.rst_l = 1'b1;
+
+      ->bmu_if.reset_complete;
+    end
   end
 
   assign bmu_if.scan_mode = 1'b0;
 
   initial begin
+    // Interface used by the UVM agent for driving and monitoring.
     uvm_config_db#(virtual bmu_interface)::set(null, "uvm_test_top.env.agent", "vif", bmu_if);
+
+    // Interface used by the reset test to request a top-owned reset.
+    uvm_config_db#(virtual bmu_interface)::set(null, "uvm_test_top", "reset_vif", bmu_if);
 
     run_test();
   end
 
 endmodule
+
+bind tb_top bmu_assertions bmu_assertions_i (
+    .clk      (clk),
+    .rst_l    (bmu_if.rst_l),
+    .result_ff(bmu_if.result_ff),
+    .error    (bmu_if.error)
+);
