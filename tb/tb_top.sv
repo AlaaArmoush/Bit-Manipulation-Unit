@@ -62,7 +62,11 @@ module tb_top;
   assign bmu_if.scan_mode = 1'b0;
 
   initial begin
+    // Interface used by the UVM agent for driving and monitoring.
     uvm_config_db#(virtual bmu_interface)::set(null, "uvm_test_top.env.agent", "vif", bmu_if);
+
+    // Interface used by the reset test to request a top-owned reset.
+    uvm_config_db#(virtual bmu_interface)::set(null, "uvm_test_top", "reset_vif", bmu_if);
 
     run_test();
   end
