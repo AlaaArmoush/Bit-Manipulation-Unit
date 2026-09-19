@@ -3,8 +3,8 @@
 set -u -o pipefail
 
 if [[ $# -ne 3 ]]; then
-    echo "Usage: $0 <suite> <seed> <seeds>" >&2
-    exit 2
+  echo "Usage: $0 <suite> <seed> <seeds>" >&2
+  exit 2
 fi
 
 suite=$1
@@ -12,67 +12,71 @@ single_seed=$2
 multiple_seeds=$3
 
 if [[ ! $suite =~ ^[[:alnum:]_]+$ ]]; then
-    echo "ERROR: invalid suite name: $suite" >&2
-    exit 2
+  echo "ERROR: invalid suite name: $suite" >&2
+  exit 2
 fi
 
 suite_file="regress/${suite}.list"
 
 if [[ ! -f $suite_file ]]; then
-    echo "ERROR: regression suite does not exist: $suite_file" >&2
-    exit 2
+  echo "ERROR: regression suite does not exist: $suite_file" >&2
+  exit 2
 fi
 
 if [[ ! -s $suite_file ]]; then
-    echo "ERROR: regression suite is empty: $suite_file" >&2
-    exit 2
+  echo "ERROR: regression suite is empty: $suite_file" >&2
+  exit 2
 fi
 
-mapfile -t tests < "$suite_file"
+mapfile -t tests <"$suite_file"
 
-if (( ${#tests[@]} == 0 )); then
-    echo "ERROR: regression suite contains no tests: $suite_file" >&2
-    exit 2
+if ((${#tests[@]} == 0)); then
+  echo "ERROR: regression suite contains no tests: $suite_file" >&2
+  exit 2
 fi
 
 for test_name in "${tests[@]}"; do
-    if [[ ! $test_name =~ ^bmu_[[:alnum:]_]+_test$ ]]; then
-        echo "ERROR: malformed test entry in $suite_file: '$test_name'" >&2
-        exit 2
-    fi
+  if [[ ! $test_name =~ ^bmu_[[:alnum:]_]+_test$ ]]; then
+    echo "ERROR: malformed test entry in $suite_file: '$test_name'" >&2
+    exit 2
+  fi
 done
 
 # A nonempty SEEDS value takes precedence over SEED.
 if [[ -n ${multiple_seeds//[[:space:]]/} ]]; then
-    selected_seeds=$multiple_seeds
+  selected_seeds=$multiple_seeds
 else
-    selected_seeds=$single_seed
+  selected_seeds=$single_seed
 fi
 
-read -r -a seeds <<< "$selected_seeds"
+read -r -a seeds <<<"$selected_seeds"
 
-if (( ${#seeds[@]} == 0 )); then
-    echo "ERROR: at least one seed must be supplied" >&2
-    exit 2
+if ((${#seeds[@]} == 0)); then
+  echo "ERROR: at least one seed must be supplied" >&2
+  exit 2
 fi
 
 for seed in "${seeds[@]}"; do
-    if [[ ! $seed =~ ^[1-9][0-9]*$ ]]; then
-        echo "ERROR: seed must be a positive decimal integer: '$seed'" >&2
-        exit 2
-    fi
+  if [[ ! $seed =~ ^[1-9][0-9]*$ ]]; then
+    echo "ERROR: seed must be a positive decimal integer: '$seed'" >&2
+    exit 2
+  fi
 done
 
 make_bin=${MAKE_BIN:-make}
 
-seed_tag=$(IFS=_; echo "${seeds[*]}")
+seed_tag=$(
+  IFS=_
+  echo "${seeds[*]}"
+)
 summary_dir="build/regress/${suite}_seeds_${seed_tag}"
 summary_file="${summary_dir}/summary.tsv"
 
 mkdir -p "$summary_dir"
 
-printf 'suite\ttest\tseed\tresult\treason\tlog_path\tcoverage_path\n' \
-    > "$summary_file"
+printf '%s\n' \
+  $'suite\ttest\tseed\tresult\treason\tscoreboard_matches\tscoreboard_mismatches\tfailed_operations\tlog_path\tconsole_path\tcoverage_path' \
+  >"$summary_file"
 
 declare -a result_tests=()
 declare -a result_seeds=()
@@ -82,136 +86,245 @@ total_count=0
 passed_count=0
 failed_count=0
 
-append_reason()
-{
-    local new_reason=$1
+append_reason() {
+  local new_reason=$1
 
-    if [[ -z $reason ]]; then
-        reason=$new_reason
-    else
-        reason="${reason},${new_reason}"
-    fi
+  if [[ -z $reason ]]; then
+    reason=$new_reason
+  else
+    reason="${reason},${new_reason}"
+  fi
 }
 
 for test_name in "${tests[@]}"; do
-    for seed in "${seeds[@]}"; do
-        run_dir="build/runs/${test_name}_seed_${seed}"
-        run_log="${run_dir}/xrun.log"
-        coverage_dir="${run_dir}/cov_work"
+  for seed in "${seeds[@]}"; do
+    run_dir="build/runs/${test_name}_seed_${seed}"
+    run_log="${run_dir}/xrun.log"
+    console_log="${run_dir}/regression_console.log"
+    coverage_dir="${run_dir}/cov_work"
 
-        echo "RUN: suite=$suite test=$test_name seed=$seed"
+    mkdir -p "$run_dir"
 
-        if "$make_bin" --no-print-directory test \
-            TEST="$test_name" \
-            SEED="$seed"; then
-            make_status=0
-        else
-            make_status=$?
+    printf 'RUN  suite=%s test=%s seed=%s\n' \
+      "$suite" "$test_name" "$seed"
+
+    if "$make_bin" --no-print-directory test \
+      TEST="$test_name" \
+      SEED="$seed" \
+      >"$console_log" 2>&1; then
+      make_status=0
+    else
+      make_status=$?
+    fi
+
+    verdict="FAIL"
+    reason=""
+    scoreboard_matches="-"
+    scoreboard_mismatches="-"
+    failed_operations="-"
+    operation_rows=()
+
+    if ((make_status != 0)); then
+      append_reason "make_test_exit_${make_status}"
+    fi
+
+    if [[ ! -f $run_log ]]; then
+      append_reason "missing_xrun_log"
+    else
+      # Match only the actual verdict messages. The UVM summary repeats
+      # report IDs and must not be counted as another verdict.
+      pass_verdict_count=$(
+        grep -Ec '^UVM_INFO .*\[BMU_TEST_PASS\] PASS:' \
+          "$run_log" || true
+      )
+      fail_verdict_count=$(
+        grep -Ec '^UVM_ERROR .*\[BMU_TEST_FAIL\] FAIL:' \
+          "$run_log" || true
+      )
+
+      if ((pass_verdict_count == 1 && \
+        fail_verdict_count == 0)); then
+        :
+      elif ((pass_verdict_count == 0 && \
+        fail_verdict_count == 1)); then
+        append_reason "BMU_TEST_FAIL"
+      elif ((pass_verdict_count == 0 && \
+        fail_verdict_count == 0)); then
+        append_reason "missing_final_BMU_verdict"
+      else
+        append_reason "malformed_final_BMU_verdict"
+      fi
+
+      if grep -Eq '^UVM_FATAL[[:space:]]+@' "$run_log"; then
+        append_reason "UVM_FATAL"
+      fi
+
+      # Assertion errors may represent DUT failures. Only Cadence fatal
+      # diagnostics are classified here as simulator failures.
+      if grep -Eq \
+        '^(xrun|xmsim|xmelab|xmvlog): \*F,' \
+        "$run_log"; then
+        append_reason "simulator_failure"
+      fi
+
+      scoreboard_line=$(
+        grep -E \
+          '\[SB_(PASS|FAIL)\] SCOREBOARD (PASS|FAIL): checked=[0-9]+ matches=[0-9]+ mismatches=[0-9]+' \
+          "$run_log" |
+          tail -n 1 || true
+      )
+
+      if [[ -n $scoreboard_line ]]; then
+        scoreboard_matches=$(
+          sed -n \
+            's/.* matches=\([0-9][0-9]*\) mismatches=.*/\1/p' \
+            <<<"$scoreboard_line"
+        )
+        scoreboard_mismatches=$(
+          sed -n \
+            's/.* mismatches=\([0-9][0-9]*\).*/\1/p' \
+            <<<"$scoreboard_line"
+        )
+
+        if [[ -z $scoreboard_matches ||
+          -z $scoreboard_mismatches ]]; then
+          scoreboard_matches="-"
+          scoreboard_mismatches="-"
+          append_reason "malformed_scoreboard_summary"
         fi
+      else
+        append_reason "missing_scoreboard_summary"
+      fi
 
-        verdict="FAIL"
-        reason=""
+      # Associate every scoreboard mismatch with its reported
+      # reference-model operation and count repeated failures.
+      mapfile -t operation_rows < <(
+        awk '
+                    /\[SB_MISMATCH\]/ {
+                        waiting_for_operation = 1
+                        next
+                    }
 
-        if (( make_status != 0 )); then
-            append_reason "make_test_exit_${make_status}"
-        fi
+                    waiting_for_operation &&
+                    /^[[:space:]]*Operation[[:space:]]*:/ {
+                        operation_count[$3]++
+                        waiting_for_operation = 0
+                    }
 
-        if [[ ! -f $run_log ]]; then
-            append_reason "missing_xrun_log"
-        else
-            # Match only the actual final verdict message. UVM's report
-            # summary repeats the report ID and must not be counted.
-            pass_verdict_count=$(
-                grep -Ec '^UVM_INFO .*\[BMU_TEST_PASS\] PASS:' \
-                    "$run_log" || true
-            )
-            fail_verdict_count=$(
-                grep -Ec '^UVM_ERROR .*\[BMU_TEST_FAIL\] FAIL:' \
-                    "$run_log" || true
-            )
+                    END {
+                        for (operation in operation_count) {
+                            printf "%s\t%d\n",
+                                   operation,
+                                   operation_count[operation]
+                        }
+                    }
+                ' "$run_log" |
+          sort
+      )
 
-            if (( pass_verdict_count == 1 &&
-                  fail_verdict_count == 0 )); then
-                :
-            elif (( pass_verdict_count == 0 &&
-                    fail_verdict_count == 1 )); then
-                append_reason "BMU_TEST_FAIL"
-            elif (( pass_verdict_count == 0 &&
-                    fail_verdict_count == 0 )); then
-                append_reason "missing_final_BMU_verdict"
-            else
-                append_reason "malformed_final_BMU_verdict"
-            fi
+      if ((${#operation_rows[@]} != 0)); then
+        failed_operations=""
 
-            if grep -Eq '^UVM_FATAL[[:space:]]+@' "$run_log"; then
-                append_reason "UVM_FATAL"
-            fi
+        for operation_row in "${operation_rows[@]}"; do
+          IFS=$'\t' read -r operation_name operation_count \
+            <<<"$operation_row"
 
-            # Assertion errors can be legitimate DUT failures, so only
-            # Cadence fatal diagnostics are classified as simulator failures.
-            if grep -Eq \
-                '^(xrun|xmsim|xmelab|xmvlog): \*F,' \
-                "$run_log"; then
-                append_reason "simulator_failure"
-            fi
-        fi
+          if [[ -n $failed_operations ]]; then
+            failed_operations="${failed_operations},"
+          fi
 
-        coverage_file=""
+          failed_operations="${failed_operations}${operation_name}(${operation_count})"
+        done
+      fi
+    fi
 
-        if [[ -d $coverage_dir ]]; then
-            coverage_file=$(
-                find "$coverage_dir" \
-                    -type f \
-                    -name '*.ucd' \
-                    -print \
-                    -quit 2>/dev/null
-            )
-        fi
+    coverage_file=""
 
-        if [[ -z $coverage_file ]]; then
-            append_reason "missing_coverage_data"
-        fi
+    if [[ -d $coverage_dir ]]; then
+      coverage_file=$(
+        find "$coverage_dir" \
+          -type f \
+          -name '*.ucd' \
+          -print \
+          -quit 2>/dev/null
+      )
+    fi
 
-        if [[ -z $reason ]]; then
-            verdict="PASS"
-            reason="-"
-            ((passed_count += 1))
-        else
-            ((failed_count += 1))
-        fi
+    if [[ -z $coverage_file ]]; then
+      append_reason "missing_coverage_data"
+    fi
 
-        ((total_count += 1))
+    if [[ -z $reason ]]; then
+      verdict="PASS"
+      reason="-"
+      ((passed_count += 1))
+    else
+      ((failed_count += 1))
+    fi
 
-        result_tests+=("$test_name")
-        result_seeds+=("$seed")
-        result_verdicts+=("$verdict")
+    ((total_count += 1))
 
-        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-            "$suite" \
-            "$test_name" \
-            "$seed" \
-            "$verdict" \
-            "$reason" \
-            "$run_log" \
-            "$coverage_dir" >> "$summary_file"
-    done
+    result_tests+=("$test_name")
+    result_seeds+=("$seed")
+    result_verdicts+=("$verdict")
+
+    printf '     %s matches=%s mismatches=%s\n' \
+      "$verdict" \
+      "$scoreboard_matches" \
+      "$scoreboard_mismatches"
+
+    if [[ $verdict == "FAIL" ]]; then
+      printf '     reason: %s\n' "$reason"
+
+      if ((${#operation_rows[@]} != 0)); then
+        echo "     failed operations:"
+
+        for operation_row in "${operation_rows[@]}"; do
+          IFS=$'\t' read -r operation_name operation_count \
+            <<<"$operation_row"
+
+          printf '       %-32s %d\n' \
+            "$operation_name" \
+            "$operation_count"
+        done
+      else
+        echo "     failed operations: none reported by scoreboard"
+      fi
+
+      printf '     log: %s\n' "$run_log"
+    fi
+
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+      "$suite" \
+      "$test_name" \
+      "$seed" \
+      "$verdict" \
+      "$reason" \
+      "$scoreboard_matches" \
+      "$scoreboard_mismatches" \
+      "$failed_operations" \
+      "$run_log" \
+      "$console_log" \
+      "$coverage_dir" >>"$summary_file"
+    echo
+  done
 done
 
 echo
 printf '%-14s %-34s %-12s %-6s\n' \
-    "SUITE" "TEST" "SEED" "RESULT"
+  "SUITE" "TEST" "SEED" "RESULT"
 printf '%-14s %-34s %-12s %-6s\n' \
-    "--------------" \
-    "----------------------------------" \
-    "------------" \
-    "------"
+  "--------------" \
+  "----------------------------------" \
+  "------------" \
+  "------"
 
 for ((index = 0; index < total_count; index += 1)); do
-    printf '%-14s %-34s %-12s %-6s\n' \
-        "$suite" \
-        "${result_tests[index]}" \
-        "${result_seeds[index]}" \
-        "${result_verdicts[index]}"
+  printf '%-14s %-34s %-12s %-6s\n' \
+    "$suite" \
+    "${result_tests[index]}" \
+    "${result_seeds[index]}" \
+    "${result_verdicts[index]}"
 done
 
 echo
@@ -220,8 +333,8 @@ printf 'Passed: %d\n' "$passed_count"
 printf 'Failed: %d\n' "$failed_count"
 printf 'Summary: %s\n' "$summary_file"
 
-if (( failed_count != 0 )); then
-    exit 1
+if ((failed_count != 0)); then
+  exit 1
 fi
 
 exit 0
