@@ -24,13 +24,6 @@ module tb_top;
       .error        (bmu_if.error)
   );
 
-  bind bmu_interface bmu_assertions bmu_assertions_i (
-      .clk      (clk),
-      .rst_l    (rst_l),
-      .result_ff(result_ff),
-      .error    (error)
-  );
-
   initial begin
     clk = 1'b0;
     forever #(CLK_PERIOD / 2) clk = ~clk;
@@ -72,3 +65,10 @@ module tb_top;
   end
 
 endmodule
+
+bind tb_top bmu_assertions bmu_assertions_i (
+    .clk      (clk),
+    .rst_l    (bmu_if.rst_l),
+    .result_ff(bmu_if.result_ff),
+    .error    (bmu_if.error)
+);
