@@ -40,15 +40,11 @@ module bmu_assertions (
       fork
         begin
           @(posedge clk);
-
           A_RST_SYNC :
           assert (result_ff === result_before_reset)
           else
             $error(
-                {
-                  "A_RST_SYNC: result changed before the reset edge: ",
-                  "before=0x%08h current=0x%08h"
-                },
+                "A_RST_SYNC: result changed before the reset edge: before=0x%08h current=0x%08h",
                 result_before_reset,
                 result_ff
             );
