@@ -40,6 +40,9 @@ package bmu_pkg;
   `include "sequences/bmu_base_sequence.sv"
   `include "sequences/bmu_sanity_sequence.sv"
 
+  // Temporal sequences
+  `include "sequences/temporal/bmu_valid_hold_sequence.sv"
+
   // CSR sequences
   `include "sequences/csr/bmu_csr_read_sequence.sv"
   `include "sequences/csr/bmu_csr_write_sequence.sv"
@@ -86,6 +89,7 @@ package bmu_pkg;
 
   // Temporal tests
   `include "tests/temporal/bmu_reset_test.sv"
+  `include "tests/temporal/bmu_valid_hold_test.sv"
 
   // CSR tests
   `include "tests/csr/bmu_csr_read_test.sv"
