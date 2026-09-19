@@ -336,6 +336,21 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     );
   endfunction : is_grev_mode_sample
 
+  protected function bit is_valid_hold_sample();
+    if (sampled_transaction == null) begin
+      return 1'b0;
+    end
+
+    return (
+        (sampled_transaction.rst_l    === 1'b1) &&
+        (sampled_transaction.valid_in === 1'b0) &&
+        ((sampled_transaction.a_in === 32'h1357_9BDF) ||
+         (sampled_transaction.a_in === 32'hAAAA_5555) ||
+         (sampled_transaction.a_in === 32'hCAFE_BABE) ||
+         (sampled_transaction.a_in === 32'hFFFF_0000))
+    );
+  endfunction : is_valid_hold_sample
+
   // COVERGROUPS
   covergroup sanity_flow_cg;
     //track each individual instance instead of global pooling
@@ -960,6 +975,65 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     }
   endgroup : grev_cg
 
+  covergroup valid_hold_cg;
+    option.per_instance = 1;
+
+    idle_operand_cp: coverpoint sampled_transaction.a_in iff (is_valid_hold_sample()) {
+      bins cleared_controls = {32'h1357_9BDF};
+      bins legal_or = {32'hAAAA_5555};
+      bins operation_conflict = {32'hCAFE_BABE};
+      bins csr_conflict = {32'hFFFF_0000};
+    }
+
+    idle_control_cp: coverpoint (
+        ((sampled_transaction.ap === '0) &&
+         (sampled_transaction.csr_ren_in === 1'b0)) ? 3'd0 :
+        ((sampled_transaction.ap.lor === 1'b1) &&
+         (sampled_transaction.ap.lxor === 1'b0) &&
+         (sampled_transaction.csr_ren_in === 1'b0)) ? 3'd1 :
+        ((sampled_transaction.ap.lor === 1'b1) &&
+         (sampled_transaction.ap.lxor === 1'b1) &&
+         (sampled_transaction.csr_ren_in === 1'b0)) ? 3'd2 :
+        ((sampled_transaction.ap.lor === 1'b1) &&
+         (sampled_transaction.csr_ren_in === 1'b1)) ? 3'd3 :
+                                                       3'd4
+    ) iff (is_valid_hold_sample()) {
+      bins cleared_controls = {3'd0};
+      bins legal_or = {3'd1};
+      bins operation_conflict = {3'd2};
+      bins csr_conflict = {3'd3};
+      ignore_bins other = {3'd4};
+    }
+
+    idle_result_hold_cp:
+        coverpoint (sampled_transaction.result_ff === 32'hA5C3_5A3C)
+        iff (is_valid_hold_sample()) {
+      bins held = {1'b1}; ignore_bins changed = {1'b0};
+    }
+
+    idle_error_cp: coverpoint sampled_transaction.error iff (is_valid_hold_sample()) {
+      bins clear = {1'b0}; bins asserted = {1'b1};
+    }
+
+    idle_control_error_cross: cross idle_control_cp, idle_error_cp{
+      ignore_bins cleared_controls_with_error =
+          binsof(idle_control_cp.cleared_controls) &&
+          binsof(idle_error_cp.asserted);
+
+      ignore_bins legal_or_with_error =
+          binsof(idle_control_cp.legal_or) &&
+          binsof(idle_error_cp.asserted);
+
+      ignore_bins operation_conflict_without_error =
+          binsof(idle_control_cp.operation_conflict) &&
+          binsof(idle_error_cp.clear);
+
+      ignore_bins csr_conflict_without_error =
+          binsof(idle_control_cp.csr_conflict) &&
+          binsof(idle_error_cp.clear);
+    }
+  endgroup : valid_hold_cg
+
   function new(string name = "bmu_coverage_subscriber", uvm_component parent = null);
     super.new(name, parent);
 
@@ -983,6 +1057,7 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     max_cg              = new();
     pack_cg             = new();
     grev_cg             = new();
+    valid_hold_cg       = new();
   endfunction : new
 
   virtual function void write(bmu_sequence_item t);
@@ -1022,6 +1097,7 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     max_cg.sample();
     pack_cg.sample();
     grev_cg.sample();
+    valid_hold_cg.sample();
 
     `uvm_info(
         "COVERAGE_SAMPLE", $sformatf(
@@ -1052,7 +1128,7 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
                 "slt_coverage=%0.2f%% ctz_coverage=%0.2f%%",
                 " cpop_coverage=%0.2f%% sext_b_coverage=%0.2f%% ",
                 "max_coverage=%0.2f%% pack_coverage=%0.2f%% ",
-                "grev_coverage=%0.2f%%"
+                "grev_coverage=%0.2f%% valid_hold_coverage=%0.2f%%"
               },
               sample_count,
               sanity_flow_cg.get_inst_coverage(),
@@ -1072,7 +1148,8 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
               sext_b_cg.get_inst_coverage(),
               max_cg.get_inst_coverage(),
               pack_cg.get_inst_coverage(),
-              grev_cg.get_inst_coverage()
+              grev_cg.get_inst_coverage(),
+              valid_hold_cg.get_inst_coverage()
               ), UVM_NONE)
   endfunction : report_phase
 
