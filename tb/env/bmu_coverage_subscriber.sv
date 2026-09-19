@@ -1034,6 +1034,23 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     }
   endgroup : valid_hold_cg
 
+  covergroup back_to_back_cg;
+    option.per_instance = 1;
+
+    operation_order_cp: coverpoint (
+        ((sampled_transaction.rst_l !== 1'b1) ||
+         (sampled_transaction.valid_in !== 1'b1)) ? 3'd0 :
+        (sampled_transaction.csr_ren_in === 1'b1) ? 3'd1 :
+        (sampled_transaction.ap.lor === 1'b1)     ? 3'd2 :
+        (sampled_transaction.ap.srl === 1'b1)     ? 3'd3 :
+        (sampled_transaction.ap.sh2add === 1'b1)  ? 3'd4 :
+        (sampled_transaction.ap.binv === 1'b1)    ? 3'd5 :
+                                                    3'd0
+    ) {
+      bins ordered_cross_family_burst = (3'd1 => 3'd2 => 3'd3 => 3'd4 => 3'd5);
+    }
+  endgroup : back_to_back_cg
+
   function new(string name = "bmu_coverage_subscriber", uvm_component parent = null);
     super.new(name, parent);
 
@@ -1058,6 +1075,7 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     pack_cg             = new();
     grev_cg             = new();
     valid_hold_cg       = new();
+    back_to_back_cg     = new();
   endfunction : new
 
   virtual function void write(bmu_sequence_item t);
@@ -1098,6 +1116,7 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
     pack_cg.sample();
     grev_cg.sample();
     valid_hold_cg.sample();
+    back_to_back_cg.sample();
 
     `uvm_info(
         "COVERAGE_SAMPLE", $sformatf(
@@ -1128,7 +1147,8 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
                 "slt_coverage=%0.2f%% ctz_coverage=%0.2f%%",
                 " cpop_coverage=%0.2f%% sext_b_coverage=%0.2f%% ",
                 "max_coverage=%0.2f%% pack_coverage=%0.2f%% ",
-                "grev_coverage=%0.2f%% valid_hold_coverage=%0.2f%%"
+                "grev_coverage=%0.2f%% valid_hold_coverage=%0.2f%% ",
+                "back_to_back_coverage=%0.2f%%"
               },
               sample_count,
               sanity_flow_cg.get_inst_coverage(),
@@ -1149,7 +1169,8 @@ class bmu_coverage_subscriber extends uvm_subscriber #(bmu_sequence_item);
               max_cg.get_inst_coverage(),
               pack_cg.get_inst_coverage(),
               grev_cg.get_inst_coverage(),
-              valid_hold_cg.get_inst_coverage()
+              valid_hold_cg.get_inst_coverage(),
+              back_to_back_cg.get_inst_coverage()
               ), UVM_NONE)
   endfunction : report_phase
 

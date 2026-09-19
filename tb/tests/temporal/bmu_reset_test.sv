@@ -104,11 +104,20 @@ class bmu_reset_test extends bmu_base_test;
 
     recovery_sequence.start(env.agent.sequencer);
 
-    wait ((env.scoreboard.match_count > matches_before_reset) ||
-          (env.scoreboard.mismatch_count > mismatches_before_reset));
+    // Allow the recovery observation to reach the scoreboard.
+    #1step;
 
-    if (env.scoreboard.mismatch_count == mismatches_before_reset) begin
-      `uvm_info("RESET_TEST_COMPLETE", "Synchronous reset and recovery checks completed", UVM_LOW)
+    if ((env.scoreboard.match_count != (matches_before_reset + 1)) ||
+        (env.scoreboard.mismatch_count != mismatches_before_reset)) begin
+      `uvm_error("RECOVERY_CHECK_COUNT",
+                 $sformatf({"The first post-reset operation was not checked exactly once: ",
+                            "expected matches/mismatches=%0d/%0d actual=%0d/%0d"},
+                             matches_before_reset + 1, mismatches_before_reset,
+                             env.scoreboard.match_count, env.scoreboard.mismatch_count))
+    end else begin
+      `uvm_info("RESET_TEST_COMPLETE",
+                "Reset counts remained unchanged and the first recovery operation was checked exactly once",
+                UVM_NONE)
     end
 
     phase.drop_objection(this, "Synchronous-reset test completed");
