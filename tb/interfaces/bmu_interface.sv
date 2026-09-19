@@ -15,6 +15,15 @@ interface bmu_interface (
   logic [31:0] result_ff;
   logic error;
 
+  // Reset-control handshake only. tb_top remains the sole reset owner.
+  event reset_request;
+  event reset_complete;
+
+  task automatic request_reset();
+    ->reset_request;
+    @reset_complete;
+  endtask : request_reset
+
   clocking driver_cb @(posedge clk);
     default input #1step output #0;
 
