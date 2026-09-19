@@ -1,7 +1,7 @@
 class bmu_reset_test extends bmu_base_test;
   `uvm_component_utils(bmu_reset_test)
 
-  virtual bmu_interface reset_vif;
+  virtual bmu_interface temporal_vif;
 
   function new(string name = "bmu_reset_test", uvm_component parent = null);
     super.new(name, parent);
@@ -12,8 +12,8 @@ class bmu_reset_test extends bmu_base_test;
   virtual function void build_phase(uvm_phase phase);
     super.build_phase(phase);
 
-    if (!uvm_config_db#(virtual bmu_interface)::get(this, "", "reset_vif", reset_vif)) begin
-      `uvm_fatal("NO_RESET_VIF", "The reset test could not retrieve reset_vif")
+    if (!uvm_config_db#(virtual bmu_interface)::get(this, "", "temporal_vif", temporal_vif)) begin
+      `uvm_fatal("NO_TEMPORAL_VIF", "The reset test could not retrieve temporal_vif")
     end
   endfunction : build_phase
 
@@ -50,40 +50,41 @@ class bmu_reset_test extends bmu_base_test;
       `uvm_fatal("RESET_SETUP_FAILED", "Could not establish the pre-reset result")
     end
 
-    if (reset_vif.monitor_cb.result_ff !== EXPECTED_RESULT) begin
+    if (temporal_vif.monitor_cb.result_ff !== EXPECTED_RESULT) begin
       `uvm_fatal("BAD_PRE_RESET_RESULT", $sformatf("Expected 0x%08h, observed 0x%08h",
-                                                   EXPECTED_RESULT, reset_vif.monitor_cb.result_ff))
+                                                   EXPECTED_RESULT,
+                                                   temporal_vif.monitor_cb.result_ff))
     end
 
     matches_before_reset    = env.scoreboard.match_count;
     mismatches_before_reset = env.scoreboard.mismatch_count;
 
-    // The task returns after the top-owned reset pulse finishes.
+    // Request a reset from the top-level reset owner.
     fork
       begin
-        reset_vif.request_reset();
+        temporal_vif.request_reset();
       end
     join_none
 
-    // Expected:
-    // reset low -> result unchanged -> rising edge -> result zero
-    @(negedge reset_vif.rst_l);
+    // The result must not change before the reset clock edge.
+    @(negedge temporal_vif.rst_l);
     #1step;
 
-    if (reset_vif.result_ff !== EXPECTED_RESULT) begin
+    if (temporal_vif.result_ff !== EXPECTED_RESULT) begin
       `uvm_error("ASYNCHRONOUS_RESET_RESPONSE",
                  $sformatf({"result changed before the reset clock edge: ",
-                            "expected=0x%08h actual=0x%08h"}, EXPECTED_RESULT, reset_vif.result_ff))
+                            "expected=0x%08h actual=0x%08h"}, EXPECTED_RESULT,
+                             temporal_vif.result_ff))
     end
 
-    // Check the DUT response after the first active reset edge.
-    @(reset_vif.monitor_cb);
+    // Check the first active reset edge.
+    @(temporal_vif.monitor_cb);
 
-    if ((reset_vif.monitor_cb.result_ff !== 32'h0000_0000) ||
-        (reset_vif.monitor_cb.error !== 1'b0)) begin
+    if ((temporal_vif.monitor_cb.result_ff !== 32'h0000_0000) ||
+        (temporal_vif.monitor_cb.error !== 1'b0)) begin
       `uvm_error("RESET_OUTPUT_NOT_CLEAR", $sformatf("result=0x%08h error=%0b",
-                                                     reset_vif.monitor_cb.result_ff,
-                                                     reset_vif.monitor_cb.error))
+                                                     temporal_vif.monitor_cb.result_ff,
+                                                     temporal_vif.monitor_cb.error))
     end
 
     wait fork;
