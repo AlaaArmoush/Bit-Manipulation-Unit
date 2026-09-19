@@ -7,43 +7,32 @@ module bmu_assertions (
     input logic        error
 );
 
-  // Sample outputs after they update on the rising edge.
-  clocking reset_cb @(posedge clk);
-    default input #0;
-
-    input rst_l;
-    input result_ff;
-    input error;
-  endclocking
-
   // Active reset must clear the outputs.
-  property p_rst_clear;
-    @(reset_cb)
-      (reset_cb.rst_l === 1'b0)
-      |->
-      ((reset_cb.result_ff === 32'h0000_0000) &&
-       (reset_cb.error     === 1'b0));
-  endproperty
+  always @(posedge clk) begin : check_reset_clear
+    #1ps;
 
-  A_RST_CLEAR :
-  assert property (p_rst_clear)
-  else $error("A_RST_CLEAR: result=0x%08h error=%0b", reset_cb.result_ff, reset_cb.error);
-
-  bit startup_reset_released;
-
-  initial begin
-    startup_reset_released = 1'b0;
+    if (rst_l === 1'b0) begin
+      A_RST_CLEAR :
+      assert ((result_ff === 32'h0000_0000) && (error === 1'b0))
+      else $error("A_RST_CLEAR: result=0x%08h error=%0b", result_ff, error);
+    end
   end
 
-  // A rising rst_l means active-low reset has been released.
+  bit runtime_reset_armed;
+
+  initial begin
+    runtime_reset_armed = 1'b0;
+  end
+
+  // Ignore the initial startup reset.
   always @(posedge rst_l) begin
-    startup_reset_released = 1'b1;
+    runtime_reset_armed = 1'b1;
   end
 
   // Expected synchronous behavior:
   // reset low -> result unchanged -> rising edge -> result zero
   always @(negedge rst_l) begin : check_synchronous_reset
-    if (startup_reset_released) begin
+    if (runtime_reset_armed) begin
       automatic logic [31:0] result_before_reset;
 
       result_before_reset = result_ff;
@@ -69,4 +58,3 @@ module bmu_assertions (
   end
 
 endmodule : bmu_assertions
-
