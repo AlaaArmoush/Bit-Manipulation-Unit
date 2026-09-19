@@ -24,18 +24,39 @@ module tb_top;
       .error        (bmu_if.error)
   );
 
+  bind bmu_interface bmu_assertions bmu_assertions_i (
+      .clk      (clk),
+      .rst_l    (rst_l),
+      .result_ff(result_ff),
+      .error    (error)
+  );
+
   initial begin
     clk = 1'b0;
     forever #(CLK_PERIOD / 2) clk = ~clk;
   end
 
-  initial begin
+  initial begin : reset_owner
+    //startup reset
     bmu_if.rst_l = 1'b0;
-
     repeat (2) @(posedge clk);
 
     @(negedge clk);
     bmu_if.rst_l = 1'b1;
+
+    // reset request from reset test
+    forever begin
+      @bmu_if.reset_request;
+
+      @(negedge clk);
+      bmu_if.rst_l = 1'b0;
+      repeat (2) @(posedge clk);
+
+      @(negedge clk);
+      bmu_if.rst_l = 1'b1;
+
+      ->bmu_if.reset_complete;
+    end
   end
 
   assign bmu_if.scan_mode = 1'b0;
