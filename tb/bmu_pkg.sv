@@ -84,6 +84,9 @@ package bmu_pkg;
   `include "tests/bmu_base_test.sv"
   `include "tests/bmu_sanity_test.sv"
 
+  // Temporal tests
+  `include "tests/temporal/bmu_reset_test.sv"
+
   // CSR tests
   `include "tests/csr/bmu_csr_read_test.sv"
   `include "tests/csr/bmu_csr_write_test.sv"
